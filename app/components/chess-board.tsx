@@ -31,12 +31,12 @@ const DIFFICULTY_LEVELS: { value: ChessSpec["difficulty"]; label: string }[] = [
 type RecordedMove = { from: Square; to: Square; promotion?: PromotionPiece };
 
 export function ChessBoard({ game }: { game: ChessSpec }) {
-  // Local, not part of the spec: both controls adjust these live, without
-  // needing the agent. Difficulty only affects the *next* computer move, so
-  // it's safe to change anytime. Color can't be — white always moves first in
-  // chess, so this is also "who goes first," and changing it mid-game would
-  // reassign whose pieces are whose. It's only settable while `history` is
-  // still empty; see `gameStarted` below.
+  // Local, not part of the spec: both controls adjust these without needing
+  // the agent. Difficulty only affects the *next* computer move, so it's
+  // safe to change live. Color can't be applied to the position in
+  // progress — white always moves first in chess, so this is also "who goes
+  // first," and it would reassign whose pieces are whose — so changing it
+  // resets the game; see `handlePlayerColorChange` below.
   const [playerColor, setPlayerColor] = useState(game.playerColor);
   const [difficulty, setDifficulty] = useState(game.difficulty);
 
@@ -168,10 +168,11 @@ export function ChessBoard({ game }: { game: ChessSpec }) {
     setPendingPromotion(null);
   };
 
-  // Reachable only while `gameStarted` is false — the toggle disables itself
-  // otherwise — so there's no in-progress position to reassign.
+  // Switching color reassigns whose pieces are whose, so it always starts a
+  // fresh game rather than trying to reinterpret the position in progress.
   const handlePlayerColorChange = (value: "first" | "second") => {
     setPlayerColor(value === "first" ? "white" : "black");
+    reset();
   };
 
   const { ranks, files } = chessOrientation(human);
@@ -205,9 +206,9 @@ export function ChessBoard({ game }: { game: ChessSpec }) {
           <TurnOrderToggle
             value={playerColor === "white" ? "first" : "second"}
             onChange={handlePlayerColorChange}
-            disabled={gameStarted}
             firstLabel="Play white"
             secondLabel="Play black"
+            note={gameStarted ? "Starts a new game" : undefined}
           />
           <DifficultySlider
             levels={DIFFICULTY_LEVELS}

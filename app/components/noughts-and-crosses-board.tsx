@@ -31,11 +31,11 @@ export function NoughtsAndCrossesBoard({
   const human = game.playerMark;
   const computer = other(human);
 
-  // Local, not part of the spec: both controls adjust these live, without
-  // needing the agent. Difficulty only affects the *next* computer move, so
-  // it's safe to change anytime. Who goes first can't be — it would reassign
-  // whose pieces are whose mid-game — so it's only settable while the board
-  // is still empty; see `gameStarted` below.
+  // Local, not part of the spec: both controls adjust these without needing
+  // the agent. Difficulty only affects the *next* computer move, so it's
+  // safe to change live. Who goes first can't be applied to the game in
+  // progress — it would reassign whose pieces are whose — so changing it
+  // resets the board; see `handleFirstMoveChange` below.
   const [firstMove, setFirstMove] = useState(game.firstMove);
   const [difficulty, setDifficulty] = useState(game.difficulty);
 
@@ -75,11 +75,14 @@ export function NoughtsAndCrossesBoard({
     setTurn(firstMove === "player" ? human : computer);
   };
 
-  // Reachable only while `gameStarted` is false — the toggle disables itself
-  // otherwise — so it's always safe to also move `turn` immediately.
+  // Changing who goes first reassigns whose pieces are whose, so it always
+  // starts a fresh board rather than trying to reinterpret the game in
+  // progress. Computes `turn` from `next` directly rather than reading back
+  // `firstMove` state, which wouldn't have updated yet in this same tick.
   const handleFirstMoveChange = (value: "first" | "second") => {
     const next = value === "first" ? "player" : "computer";
     setFirstMove(next);
+    setBoard(EMPTY_BOARD);
     setTurn(next === "player" ? human : computer);
   };
 
@@ -107,7 +110,7 @@ export function NoughtsAndCrossesBoard({
           <TurnOrderToggle
             value={firstMove === "player" ? "first" : "second"}
             onChange={handleFirstMoveChange}
-            disabled={gameStarted}
+            note={gameStarted ? "Starts a new game" : undefined}
           />
           <DifficultySlider
             levels={DIFFICULTY_LEVELS}

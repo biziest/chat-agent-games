@@ -3,9 +3,9 @@
 type Props = {
   value: "first" | "second";
   onChange: (value: "first" | "second") => void;
-  disabled?: boolean;
   firstLabel?: string;
   secondLabel?: string;
+  note?: string;
 };
 
 const OPTIONS = ["first", "second"] as const;
@@ -16,16 +16,17 @@ const OPTIONS = ["first", "second"] as const;
  * tic-tac-toe's `firstMove: "player" | "computer"`, chess's `playerColor`
  * (white always moves first in chess, so color *is* turn order).
  *
- * Pass `disabled` once the game has actually started: changing who goes
- * first mid-game would reassign whose pieces are whose, not just who's "up"
- * next, so every board only allows this before the first move.
+ * Always takes effect immediately, however far into a game you are — the
+ * calling board restarts its own game state alongside the preference, since
+ * reassigning who's playing which side mid-game isn't otherwise coherent.
+ * Pass `note` to surface that ("Starts a new game") when it matters.
  */
 export function TurnOrderToggle({
   value,
   onChange,
-  disabled = false,
   firstLabel = "Go first",
   secondLabel = "Go second",
+  note,
 }: Props) {
   return (
     <div>
@@ -37,28 +38,20 @@ export function TurnOrderToggle({
           <button
             key={option}
             type="button"
-            disabled={disabled}
             onClick={() => onChange(option)}
             className={[
               "rounded-md px-3 py-1.5 font-medium transition-colors",
               value === option
                 ? "bg-accent text-accent-foreground"
-                : "text-muted",
-              disabled
-                ? "cursor-not-allowed opacity-50"
-                : value === option
-                  ? ""
-                  : "hover:text-foreground",
+                : "text-muted hover:text-foreground",
             ].join(" ")}
           >
             {option === "first" ? firstLabel : secondLabel}
           </button>
         ))}
       </div>
-      {disabled ? (
-        <p className="mt-1 text-center text-[10px] text-muted/70">
-          Available again after Play Again
-        </p>
+      {note ? (
+        <p className="mt-1 text-center text-[10px] text-muted/70">{note}</p>
       ) : null}
     </div>
   );
