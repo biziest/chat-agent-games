@@ -8,6 +8,7 @@ import {
   useState,
   type DragEvent,
 } from "react";
+import { z } from "zod";
 import { DifficultySlider } from "@/app/components/difficulty-slider";
 import { TurnOrderToggle } from "@/app/components/turn-order-toggle";
 import {
@@ -30,15 +31,67 @@ const DIFFICULTY_LEVELS: { value: ChessSpec["difficulty"]; label: string }[] = [
 
 type RecordedMove = { from: Square; to: Square; promotion?: PromotionPiece };
 
-export function ChessBoard({ game }: { game: ChessSpec }) {
+const progressSchema = z.object({
+  history: z.array(
+    z.object({
+      from: z.string(),
+      to: z.string(),
+      promotion: z.enum(["q", "r", "b", "n"]).optional(),
+    }),
+  ),
+  playerColor: z.enum(["white", "black"]),
+  difficulty: z.enum(["easy", "medium", "hard"]),
+});
+
+type Progress = {
+  history: RecordedMove[];
+  playerColor: ChessSpec["playerColor"];
+  difficulty: ChessSpec["difficulty"];
+};
+
+/**
+ * Validates rather than trusts `initialProgress` — it round-trips through
+ * `onProgressChange` into either in-memory session state or a saved game's
+ * localStorage entry (see workspace.tsx). Beyond shape, it also has to
+ * actually *replay* — chess.js throws on an illegal move, so a corrupted or
+ * hand-edited history shouldn't crash the board. Falls back to a fresh game.
+ */
+function loadProgress(raw: unknown, game: ChessSpec): Progress {
+  const fallback: Progress = {
+    history: [],
+    playerColor: game.playerColor,
+    difficulty: game.difficulty,
+  };
+  const parsed = progressSchema.safeParse(raw);
+  if (!parsed.success) return fallback;
+  try {
+    const check = new Chess();
+    for (const move of parsed.data.history) check.move(move);
+  } catch {
+    return fallback;
+  }
+  return parsed.data as Progress;
+}
+
+export function ChessBoard({
+  game,
+  initialProgress,
+  onProgressChange,
+}: {
+  game: ChessSpec;
+  initialProgress?: unknown;
+  onProgressChange: (progress: unknown) => void;
+}) {
+  const [initial] = useState(() => loadProgress(initialProgress, game));
+
   // Local, not part of the spec: both controls adjust these without needing
   // the agent. Difficulty only affects the *next* computer move, so it's
   // safe to change live. Color can't be applied to the position in
   // progress — white always moves first in chess, so this is also "who goes
   // first," and it would reassign whose pieces are whose — so changing it
   // resets the game; see `handlePlayerColorChange` below.
-  const [playerColor, setPlayerColor] = useState(game.playerColor);
-  const [difficulty, setDifficulty] = useState(game.difficulty);
+  const [playerColor, setPlayerColor] = useState(initial.playerColor);
+  const [difficulty, setDifficulty] = useState(initial.difficulty);
 
   const human = playerColor === "white" ? "w" : "b";
   const computer = human === "w" ? "b" : "w";
@@ -47,13 +100,21 @@ export function ChessBoard({ game }: { game: ChessSpec }) {
   // rules forbid reading a ref during render, and chess.js's own repetition
   // detection needs the full history anyway, which a bare `new Chess(fen)`
   // per move would lose. `chess` below replays that history on demand.
-  const [history, setHistory] = useState<RecordedMove[]>([]);
+  const [history, setHistory] = useState<RecordedMove[]>(initial.history);
   const chess = useMemo(() => {
     const c = new Chess();
     for (const move of history) c.move(move);
     return c;
   }, [history]);
   const gameStarted = history.length > 0;
+
+  // Reports the resumable state up to the parent whenever it changes, so
+  // leaving for the menu and coming back (or, for a saved game, reloading
+  // the page) picks up where this left off — see `initialProgress` above and
+  // the comment on `GameSession.progress` in workspace.tsx.
+  useEffect(() => {
+    onProgressChange({ history, playerColor, difficulty });
+  }, [history, playerColor, difficulty, onProgressChange]);
 
   const [selected, setSelected] = useState<Square | null>(null);
   const [dragOverSquare, setDragOverSquare] = useState<Square | null>(null);

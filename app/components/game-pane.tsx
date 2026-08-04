@@ -17,6 +17,8 @@ type Props = {
   onLaunchSavedGame: (saved: SavedGame) => void;
   onRemoveSavedGame: (id: string) => void;
   onSaveGame: (spec: CustomGameSpec) => void;
+  initialProgress: unknown;
+  onProgressChange: (progress: unknown) => void;
 };
 
 export function GamePane({
@@ -27,6 +29,8 @@ export function GamePane({
   onLaunchSavedGame,
   onRemoveSavedGame,
   onSaveGame,
+  initialProgress,
+  onProgressChange,
 }: Props) {
   if (!game) {
     return (
@@ -48,7 +52,12 @@ export function GamePane({
       >
         ← Games
       </button>
-      <Board game={game} onSaveGame={onSaveGame} />
+      <Board
+        game={game}
+        onSaveGame={onSaveGame}
+        initialProgress={initialProgress}
+        onProgressChange={onProgressChange}
+      />
     </div>
   );
 }
@@ -56,16 +65,32 @@ export function GamePane({
 function Board({
   game,
   onSaveGame,
+  initialProgress,
+  onProgressChange,
 }: {
   game: ActiveGame;
   onSaveGame: (spec: CustomGameSpec) => void;
+  initialProgress: unknown;
+  onProgressChange: (progress: unknown) => void;
 }) {
   const { spec, origin } = game;
   switch (spec.kind) {
     case "noughts-and-crosses":
-      return <NoughtsAndCrossesBoard game={spec} />;
+      return (
+        <NoughtsAndCrossesBoard
+          game={spec}
+          initialProgress={initialProgress}
+          onProgressChange={onProgressChange}
+        />
+      );
     case "chess":
-      return <ChessBoard game={spec} />;
+      return (
+        <ChessBoard
+          game={spec}
+          initialProgress={initialProgress}
+          onProgressChange={onProgressChange}
+        />
+      );
     case "custom":
       return (
         <CustomGameBoard
@@ -75,6 +100,8 @@ function Board({
           // to save) or already in the library.
           offerSave={origin === "chat"}
           onSave={() => onSaveGame(spec)}
+          initialProgress={initialProgress}
+          onProgressChange={onProgressChange}
         />
       );
   }

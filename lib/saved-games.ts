@@ -24,12 +24,18 @@ export type SavedGame = {
   id: string;
   spec: CustomGameSpec;
   savedAt: number;
+  // Opaque, game-defined resume state — a curated game's move history, or
+  // whatever a custom game last reported via its progress protocol (see
+  // custom-game-board.tsx). Unvalidated beyond "is it JSON": its shape is
+  // defined by whichever board component owns it, not by this module.
+  progress?: unknown;
 };
 
 const savedGameSchema = z.object({
   id: z.string(),
   spec: customGameSpecSchema,
   savedAt: z.number(),
+  progress: z.unknown().optional(),
 });
 
 const STORAGE_KEY = "chat-agent-games:saved-games";

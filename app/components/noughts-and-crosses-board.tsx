@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { z } from "zod";
 import { DifficultySlider } from "@/app/components/difficulty-slider";
 import { TurnOrderToggle } from "@/app/components/turn-order-toggle";
 import type { NoughtsAndCrossesSpec } from "@/lib/game";
@@ -23,26 +24,69 @@ const DIFFICULTY_LEVELS: {
   { value: "perfect", label: "Perfect" },
 ];
 
+const progressSchema = z.object({
+  board: z.array(z.enum(["X", "O"]).nullable()).length(9),
+  turn: z.enum(["X", "O"]),
+  firstMove: z.enum(["player", "computer"]),
+  difficulty: z.enum(["easy", "medium", "perfect"]),
+});
+
+type Progress = {
+  board: Board;
+  turn: Mark;
+  firstMove: NoughtsAndCrossesSpec["firstMove"];
+  difficulty: NoughtsAndCrossesSpec["difficulty"];
+};
+
+/**
+ * Validates rather than trusts `initialProgress` — it round-trips through
+ * `onProgressChange` into either in-memory session state or a saved game's
+ * localStorage entry (see workspace.tsx), and a stale or hand-edited blob
+ * shouldn't crash the board. Falls back to a fresh game.
+ */
+function loadProgress(raw: unknown, game: NoughtsAndCrossesSpec): Progress {
+  const parsed = progressSchema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  return {
+    board: EMPTY_BOARD,
+    turn: game.firstMove === "player" ? game.playerMark : other(game.playerMark),
+    firstMove: game.firstMove,
+    difficulty: game.difficulty,
+  };
+}
+
 export function NoughtsAndCrossesBoard({
   game,
+  initialProgress,
+  onProgressChange,
 }: {
   game: NoughtsAndCrossesSpec;
+  initialProgress?: unknown;
+  onProgressChange: (progress: unknown) => void;
 }) {
   const human = game.playerMark;
   const computer = other(human);
+
+  const [initial] = useState(() => loadProgress(initialProgress, game));
 
   // Local, not part of the spec: both controls adjust these without needing
   // the agent. Difficulty only affects the *next* computer move, so it's
   // safe to change live. Who goes first can't be applied to the game in
   // progress — it would reassign whose pieces are whose — so changing it
   // resets the board; see `handleFirstMoveChange` below.
-  const [firstMove, setFirstMove] = useState(game.firstMove);
-  const [difficulty, setDifficulty] = useState(game.difficulty);
+  const [firstMove, setFirstMove] = useState(initial.firstMove);
+  const [difficulty, setDifficulty] = useState(initial.difficulty);
 
-  const [board, setBoard] = useState<Board>(EMPTY_BOARD);
-  const [turn, setTurn] = useState(() =>
-    firstMove === "player" ? human : computer,
-  );
+  const [board, setBoard] = useState<Board>(initial.board);
+  const [turn, setTurn] = useState<Mark>(initial.turn);
+
+  // Reports the resumable state up to the parent whenever it changes, so
+  // leaving for the menu and coming back (or, for a saved game, reloading
+  // the page) picks up where this left off — see `initialProgress` above and
+  // the comment on `GameSession.progress` in workspace.tsx.
+  useEffect(() => {
+    onProgressChange({ board, turn, firstMove, difficulty });
+  }, [board, turn, firstMove, difficulty, onProgressChange]);
 
   const won = findWinner(board);
   const draw = !won && isFull(board);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CustomGameSpec } from "@/lib/game";
 
 // Fetched once and reused for every custom game shown this session — the
@@ -12,16 +12,26 @@ function loadThreeSource(): Promise<string> {
   return threeSourcePromise;
 }
 
+const PROGRESS_MESSAGE_TYPE = "chat-agent-games:progress";
+
+/** Escapes `<` so a JSON value can't break out of its enclosing <script> tag. */
+function embedJson(value: unknown): string {
+  return JSON.stringify(value ?? null).replace(/</g, "\\u003c");
+}
+
 /**
- * Builds the final iframe document: the vendored three.js bundle inlined
- * first, so a global `THREE` exists before the model's own script runs, then
- * the model-authored page unchanged. Done here at render time rather than
- * baked into the stored spec, so the ~700KB library never touches
- * conversation history or the saved-games localStorage entry — see
- * lib/saved-games.ts.
+ * Builds the final iframe document: a small runtime script inlined first —
+ * the vendored three.js bundle (so a global `THREE` exists before the
+ * model's own script runs) plus `window.__initialProgress` (the resume state
+ * from a previous visit, or `null` for a fresh game; see the system prompt in
+ * trigger/chat.ts for the save/restore contract the model's script follows)
+ * — then the model-authored page unchanged. Done here at render time rather
+ * than baked into the stored spec, so neither the three.js bundle nor a
+ * game's progress touches conversation history or the saved-games
+ * localStorage entry itself — see lib/saved-games.ts.
  */
-function withThree(html: string, threeSource: string): string {
-  const script = `<script>${threeSource}</script>`;
+function buildSrcDoc(html: string, threeSource: string, initialProgress: unknown): string {
+  const script = `<script>window.__initialProgress=${embedJson(initialProgress)};${threeSource}</script>`;
   const headMatch = /<head[^>]*>/i.exec(html);
   if (headMatch) {
     const index = headMatch.index + headMatch[0].length;
@@ -41,14 +51,25 @@ export function CustomGameBoard({
   game,
   offerSave,
   onSave,
+  initialProgress,
+  onProgressChange,
 }: {
   game: CustomGameSpec;
   offerSave: boolean;
   onSave: () => void;
+  initialProgress?: unknown;
+  onProgressChange: (progress: unknown) => void;
 }) {
   const [saved, setSaved] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [threeSource, setThreeSource] = useState<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Captured once at mount — the *live* prop changes every time this game's
+  // own progress gets reported (see the message listener below), and
+  // re-embedding it into `srcDoc` on every change would reload the iframe
+  // (wiping its state) each time it tries to save that same state.
+  const [capturedProgress] = useState(() => initialProgress ?? null);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,6 +80,29 @@ export function CustomGameBoard({
       cancelled = true;
     };
   }, []);
+
+  // The sandboxed iframe has no other channel back to the app, so a custom
+  // game reports its own resumable state via postMessage — see the
+  // save/restore contract in trigger/chat.ts's system prompt. Checking
+  // `event.source` against this iframe's own window (not just the message
+  // shape) is what makes this safe to trust despite `sandbox="allow-scripts"`
+  // giving the content an opaque, unverifiable origin.
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      const data: unknown = event.data;
+      if (
+        !data ||
+        typeof data !== "object" ||
+        (data as { type?: unknown }).type !== PROGRESS_MESSAGE_TYPE
+      ) {
+        return;
+      }
+      onProgressChange((data as { progress: unknown }).progress);
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [onProgressChange]);
 
   const handleSave = () => {
     onSave();
@@ -102,8 +146,9 @@ export function CustomGameBoard({
 
       {threeSource ? (
         <iframe
+          ref={iframeRef}
           title={game.title}
-          srcDoc={withThree(game.html, threeSource)}
+          srcDoc={buildSrcDoc(game.html, threeSource, capturedProgress)}
           sandbox="allow-scripts"
           className="min-h-0 flex-1 rounded-xl border border-border"
         />

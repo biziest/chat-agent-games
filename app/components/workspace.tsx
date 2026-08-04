@@ -40,6 +40,13 @@ type GameSession = {
   spec: GameSpec;
   origin: "chat" | "menu";
   chat: Chat<UIMessage>;
+  // Opaque, board-owned resume state (move history, or whatever a custom
+  // game last reported — see custom-game-board.tsx). Kept here rather than
+  // as local state inside the board component so it survives leaving to the
+  // menu and coming back: `GamePane` remounts the board on every visit
+  // (see the comment by its `key`), so anything the board wants preserved
+  // has to live above that remount boundary.
+  progress?: unknown;
 };
 
 type ActiveGame = { id: string; spec: GameSpec; origin: "chat" | "menu" };
@@ -182,6 +189,34 @@ export function Workspace() {
     writeSavedGames(getSavedGamesSnapshot().filter((saved) => saved.id !== id));
   }, []);
 
+  // Called by whichever board is on screen whenever its progress changes
+  // (a move, a tick worth resuming from). Kept on the session so it
+  // survives a trip back to the menu; additionally mirrored into the saved
+  // game's own localStorage entry when this session *is* a saved game
+  // (its id doubles as the session id — see `handleLaunchSavedGame`), so
+  // that progress also survives a page reload, not just navigating within
+  // the app.
+  const handleProgressChange = useCallback(
+    (progress: unknown) => {
+      setState((prev) => {
+        if (!prev.activeSessionId) return prev;
+        const existing = prev.sessions.get(prev.activeSessionId);
+        if (!existing) return prev;
+        const sessions = new Map(prev.sessions);
+        sessions.set(prev.activeSessionId, { ...existing, progress });
+        return { ...prev, sessions };
+      });
+
+      if (!activeSessionId) return;
+      const current = getSavedGamesSnapshot();
+      if (!current.some((saved) => saved.id === activeSessionId)) return;
+      writeSavedGames(
+        current.map((saved) => (saved.id === activeSessionId ? { ...saved, progress } : saved)),
+      );
+    },
+    [activeSessionId],
+  );
+
   // Keyed by the saved game's own stable id (not a fresh random one) so
   // relaunching the same library entry later this session resumes its
   // dedicated chat — including any edits already made to it — rather than
@@ -223,6 +258,8 @@ export function Workspace() {
           onLaunchSavedGame={handleLaunchSavedGame}
           onRemoveSavedGame={handleRemoveSavedGame}
           onSaveGame={handleSaveGame}
+          initialProgress={activeSession?.progress}
+          onProgressChange={handleProgressChange}
         />
       </main>
     </div>

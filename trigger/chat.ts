@@ -67,6 +67,16 @@ Requirements for the HTML you write for \`createCustomGame\`:
 - Include real controls (keyboard/mouse/touch as the game calls for), visible
   score/state (plain HTML overlaid on the canvas is fine for text/UI), and a way
   to restart without reloading the page.
+- Support resuming progress. On load, check \`window.__initialProgress\` — it's
+  \`null\` for a brand-new game, or whatever JSON-serializable value you last
+  reported (see below) if the player is returning to a game already under way.
+  When it's present, rebuild the game from it instead of starting fresh
+  (position, score, level, timer — whatever a player would expect to still be
+  there). Whenever something worth resuming from changes (a move, a level
+  completed, a score change — not every animation frame), call
+  \`parent.postMessage({ type: "chat-agent-games:progress", progress: <your
+  JSON-serializable state> }, "*")\` with enough information to fully
+  reconstruct the game from \`window.__initialProgress\` next time.
 - Correct and simple beats ambitious and broken. A small, working game is a better
   result than a bigger one with bugs.
 
