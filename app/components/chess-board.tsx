@@ -248,7 +248,7 @@ export function ChessBoard({ game }: { game: ChessSpec }) {
                   aria-label={`${square}${piece ? `, ${piece.color === "w" ? "white" : "black"} ${piece.type}` : ""}`}
                   className={[
                     "relative flex size-12 items-center justify-center text-3xl transition-colors",
-                    light ? "bg-surface" : "bg-surface-raised",
+                    light ? "bg-surface-raised" : "bg-surface",
                     selectable ? "ring-2 ring-accent ring-inset" : "",
                     inCheck ? "bg-red-500/20" : "",
                     isLastMove && !selectable && !inCheck ? "bg-accent/10" : "",
