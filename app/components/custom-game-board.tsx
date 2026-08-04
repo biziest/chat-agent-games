@@ -109,11 +109,27 @@ export function CustomGameBoard({
     setSaved(true);
   };
 
+  // A rough but reliable signal: the only way this HTML could restore state
+  // is by reading `window.__initialProgress`, so if that string isn't in
+  // there at all, this game predates the save/restore contract in
+  // trigger/chat.ts (or was built before that instruction existed) and won't
+  // resume no matter what gets injected into `srcDoc`. Asking the model to
+  // add it (in this game's own chat) makes it regenerate the HTML with the
+  // contract included, same as any other edit.
+  const supportsProgress = game.html.includes("__initialProgress");
+
   return (
     <div className="flex flex-1 flex-col gap-3 p-6">
       <header className="text-center">
         <h2 className="text-lg font-medium tracking-tight">{game.title}</h2>
       </header>
+
+      {!supportsProgress ? (
+        <p className="text-center text-xs text-muted">
+          This game was built before progress-saving existed — ask its chat to
+          &ldquo;add save and resume support&rdquo; to fix that.
+        </p>
+      ) : null}
 
       {/* There's no channel back from the sandboxed iframe, so this can't
           detect "you just finished playing" — it's offered once, right
