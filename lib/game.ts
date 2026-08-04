@@ -14,6 +14,27 @@ import { z } from "zod";
  * component in `app/components/`.
  */
 
+// ---------- Genres ----------
+
+/**
+ * A small, fixed set rather than freeform text — freeform genre strings from
+ * the model would fragment into a new one-off category per game, defeating
+ * the point of folders. Drives both the catalog's static genres and the
+ * genre the agent picks for each custom game it creates.
+ */
+export const GENRES = [
+  "Strategy",
+  "Shooter",
+  "Dodging",
+  "Puzzle",
+  "Platformer",
+  "Racing",
+  "Card & Tabletop",
+  "Other",
+] as const;
+
+export type Genre = (typeof GENRES)[number];
+
 // ---------- Noughts & crosses ----------
 
 export const noughtsAndCrossesSpecSchema = z.object({
@@ -114,6 +135,7 @@ export function normalizeChessSpec(input: CreateChessInput = {}): ChessSpec {
 export const customGameSpecSchema = z.object({
   kind: z.literal("custom"),
   title: z.string(),
+  genre: z.enum(GENRES),
   html: z.string(),
 });
 
@@ -124,6 +146,12 @@ export const createCustomGameInputSchema = z.object({
     .string()
     .optional()
     .describe("Short display name for the game."),
+  genre: z
+    .enum(GENRES)
+    .optional()
+    .describe(
+      "Which category this game belongs to, for the on-screen library folders. Pick the closest fit — e.g. a falling-object dodger is 'Dodging', a top-down shooter is 'Shooter', a tactical game is 'Strategy'. Defaults to 'Other' if none fit.",
+    ),
   html: z
     .string()
     .describe(
@@ -139,6 +167,7 @@ export function normalizeCustomGameSpec(
   return {
     kind: "custom",
     title: input.title?.trim() || "Custom Game",
+    genre: input.genre ?? "Other",
     html: input.html,
   };
 }
@@ -173,20 +202,26 @@ export const GAME_TOOL_NAMES: ReadonlySet<string> = new Set([
 export type CatalogGameId = "noughts-and-crosses" | "chess";
 
 /** Drives both the on-screen menu and the tool descriptions in the prompt. */
-export const GAME_CATALOG: { id: CatalogGameId; title: string; blurb: string }[] =
-  [
-    {
-      id: "noughts-and-crosses",
-      title: "Noughts & Crosses",
-      blurb: "3x3 grid, three in a row wins. Difficulty from random to unbeatable.",
-    },
-    {
-      id: "chess",
-      title: "Chess",
-      blurb:
-        "Full rules — castling, en passant, promotion — against a computer opponent.",
-    },
-  ];
+export const GAME_CATALOG: {
+  id: CatalogGameId;
+  title: string;
+  blurb: string;
+  genre: Genre;
+}[] = [
+  {
+    id: "noughts-and-crosses",
+    title: "Noughts & Crosses",
+    blurb: "3x3 grid, three in a row wins. Difficulty from random to unbeatable.",
+    genre: "Strategy",
+  },
+  {
+    id: "chess",
+    title: "Chess",
+    blurb:
+      "Full rules — castling, en passant, promotion — against a computer opponent.",
+    genre: "Strategy",
+  },
+];
 
 /** The spec a catalog entry launches with when picked with no other input. */
 export function defaultGameSpec(id: CatalogGameId): GameSpec {

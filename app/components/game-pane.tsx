@@ -4,16 +4,40 @@ import { ChessBoard } from "@/app/components/chess-board";
 import { CustomGameBoard } from "@/app/components/custom-game-board";
 import { GameMenu } from "@/app/components/game-menu";
 import { NoughtsAndCrossesBoard } from "@/app/components/noughts-and-crosses-board";
-import type { CatalogGameId, GameSpec } from "@/lib/game";
+import type { CatalogGameId, CustomGameSpec, GameSpec } from "@/lib/game";
+import type { SavedGame } from "@/lib/saved-games";
+
+type ActiveGame = { id: string; spec: GameSpec; origin: "chat" | "menu" };
 
 type Props = {
-  game: { id: string; spec: GameSpec } | null;
+  game: ActiveGame | null;
   onSelectGame: (id: CatalogGameId) => void;
   onExitGame: () => void;
+  savedGames: SavedGame[];
+  onLaunchSavedGame: (saved: SavedGame) => void;
+  onRemoveSavedGame: (id: string) => void;
+  onSaveGame: (spec: CustomGameSpec) => void;
 };
 
-export function GamePane({ game, onSelectGame, onExitGame }: Props) {
-  if (!game) return <GameMenu onSelect={onSelectGame} />;
+export function GamePane({
+  game,
+  onSelectGame,
+  onExitGame,
+  savedGames,
+  onLaunchSavedGame,
+  onRemoveSavedGame,
+  onSaveGame,
+}: Props) {
+  if (!game) {
+    return (
+      <GameMenu
+        onSelect={onSelectGame}
+        savedGames={savedGames}
+        onLaunchSaved={onLaunchSavedGame}
+        onRemoveSaved={onRemoveSavedGame}
+      />
+    );
+  }
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -24,18 +48,34 @@ export function GamePane({ game, onSelectGame, onExitGame }: Props) {
       >
         ← Games
       </button>
-      <Board spec={game.spec} />
+      <Board game={game} onSaveGame={onSaveGame} />
     </div>
   );
 }
 
-function Board({ spec }: { spec: GameSpec }) {
+function Board({
+  game,
+  onSaveGame,
+}: {
+  game: ActiveGame;
+  onSaveGame: (spec: CustomGameSpec) => void;
+}) {
+  const { spec, origin } = game;
   switch (spec.kind) {
     case "noughts-and-crosses":
       return <NoughtsAndCrossesBoard game={spec} />;
     case "chess":
       return <ChessBoard game={spec} />;
     case "custom":
-      return <CustomGameBoard game={spec} />;
+      return (
+        <CustomGameBoard
+          game={spec}
+          // Only a game just generated this session is offered a save —
+          // one already launched from the menu is either curated (nothing
+          // to save) or already in the library.
+          offerSave={origin === "chat"}
+          onSave={() => onSaveGame(spec)}
+        />
+      );
   }
 }
