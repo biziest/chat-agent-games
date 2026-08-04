@@ -1,7 +1,13 @@
 "use client";
 
 import { Chess, type Square } from "chess.js";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type DragEvent,
+} from "react";
 import {
   chessOutcome,
   chooseChessMove,
@@ -33,6 +39,7 @@ export function ChessBoard({ game }: { game: ChessSpec }) {
   }, [history]);
 
   const [selected, setSelected] = useState<Square | null>(null);
+  const [dragOverSquare, setDragOverSquare] = useState<Square | null>(null);
   const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(
     null,
   );
@@ -63,6 +70,28 @@ export function ChessBoard({ game }: { game: ChessSpec }) {
     [],
   );
 
+  // Shared by click-to-move and drag-and-drop. Checks legality itself rather
+  // than trusting the memoized `legalDestinations` (which is keyed on
+  // `selected` state) so a drop is validated against the actual current
+  // position regardless of any render timing between drag start and drop.
+  const tryMove = useCallback(
+    (from: Square, to: Square) => {
+      const legal = chess
+        .moves({ verbose: true, square: from })
+        .some((m) => m.to === to);
+      if (!legal) return false;
+
+      if (needsPromotionChoice(chess, from, to)) {
+        setPendingPromotion({ from, to });
+        setSelected(null);
+      } else {
+        commitMove(from, to);
+      }
+      return true;
+    },
+    [chess, commitMove],
+  );
+
   const onSquareClick = (square: Square) => {
     if (over || turn !== human || pendingPromotion) return;
 
@@ -71,18 +100,28 @@ export function ChessBoard({ game }: { game: ChessSpec }) {
       return;
     }
 
-    if (selected && legalDestinations.has(square)) {
-      if (needsPromotionChoice(chess, selected, square)) {
-        setPendingPromotion({ from: selected, to: square });
-        setSelected(null);
-      } else {
-        commitMove(selected, square);
-      }
-      return;
-    }
+    if (selected && tryMove(selected, square)) return;
 
     const piece = chess.get(square);
     setSelected(piece && piece.color === human ? square : null);
+  };
+
+  const onSquareDragOver = (event: DragEvent, square: Square) => {
+    event.preventDefault(); // required for onDrop to fire at all
+    if (dragOverSquare !== square) setDragOverSquare(square);
+  };
+
+  const onSquareDrop = (event: DragEvent, square: Square) => {
+    event.preventDefault();
+    setDragOverSquare(null);
+    const from = event.dataTransfer.getData("text/plain") as Square | "";
+    if (from) tryMove(from, square);
+    setSelected(null);
+  };
+
+  const onPieceDragEnd = () => {
+    setSelected(null);
+    setDragOverSquare(null);
   };
 
   // The computer's turn. Delayed slightly so its move reads as a response
@@ -155,12 +194,20 @@ export function ChessBoard({ game }: { game: ChessSpec }) {
                 lastMove && (lastMove.from === square || lastMove.to === square);
               const inCheck =
                 check && piece?.type === "k" && piece.color === turn;
+              const draggablePiece =
+                piece?.color === human &&
+                !over &&
+                turn === human &&
+                !pendingPromotion;
+              const hoveredForDrop = dragOverSquare === square && destination;
 
               return (
                 <button
                   key={square}
                   type="button"
                   onClick={() => onSquareClick(square)}
+                  onDragOver={(event) => onSquareDragOver(event, square)}
+                  onDrop={(event) => onSquareDrop(event, square)}
                   aria-label={`${square}${piece ? `, ${piece.color === "w" ? "white" : "black"} ${piece.type}` : ""}`}
                   className={[
                     "relative flex size-12 items-center justify-center text-3xl transition-colors",
@@ -168,9 +215,31 @@ export function ChessBoard({ game }: { game: ChessSpec }) {
                     selectable ? "ring-2 ring-accent ring-inset" : "",
                     inCheck ? "bg-red-500/20" : "",
                     isLastMove && !selectable && !inCheck ? "bg-accent/10" : "",
+                    hoveredForDrop ? "bg-accent/20" : "",
                   ].join(" ")}
                 >
-                  {piece ? PIECE_GLYPH[piece.type][piece.color] : null}
+                  {piece ? (
+                    <span
+                      draggable={draggablePiece}
+                      onDragStart={(event) => {
+                        if (!draggablePiece) {
+                          event.preventDefault();
+                          return;
+                        }
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", square);
+                        setSelected(square);
+                      }}
+                      onDragEnd={onPieceDragEnd}
+                      className={
+                        draggablePiece
+                          ? "cursor-grab select-none active:cursor-grabbing"
+                          : "select-none"
+                      }
+                    >
+                      {PIECE_GLYPH[piece.type][piece.color]}
+                    </span>
+                  ) : null}
                   {destination ? (
                     <span
                       className={
