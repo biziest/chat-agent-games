@@ -8,6 +8,8 @@ import {
   useState,
   type DragEvent,
 } from "react";
+import { DifficultySlider } from "@/app/components/difficulty-slider";
+import { TurnOrderToggle } from "@/app/components/turn-order-toggle";
 import {
   chessOutcome,
   chooseChessMove,
@@ -21,10 +23,25 @@ import type { ChessSpec } from "@/lib/game";
 type PromotionPiece = "q" | "r" | "b" | "n";
 const PROMOTION_CHOICES: PromotionPiece[] = ["q", "r", "b", "n"];
 
+const DIFFICULTY_LEVELS: { value: ChessSpec["difficulty"]; label: string }[] = [
+  { value: "easy", label: "Easy" },
+  { value: "medium", label: "Medium" },
+  { value: "hard", label: "Hard" },
+];
+
 type RecordedMove = { from: Square; to: Square; promotion?: PromotionPiece };
 
 export function ChessBoard({ game }: { game: ChessSpec }) {
-  const human = game.playerColor === "white" ? "w" : "b";
+  // Local, not part of the spec: both controls adjust these live, without
+  // needing the agent. Difficulty only affects the *next* computer move, so
+  // it's safe to change anytime. Color can't be — white always moves first in
+  // chess, so this is also "who goes first," and changing it mid-game would
+  // reassign whose pieces are whose. It's only settable while `history` is
+  // still empty; see `gameStarted` below.
+  const [playerColor, setPlayerColor] = useState(game.playerColor);
+  const [difficulty, setDifficulty] = useState(game.difficulty);
+
+  const human = playerColor === "white" ? "w" : "b";
   const computer = human === "w" ? "b" : "w";
 
   // The move list is the source of truth, not a live engine instance: React's
@@ -37,6 +54,7 @@ export function ChessBoard({ game }: { game: ChessSpec }) {
     for (const move of history) c.move(move);
     return c;
   }, [history]);
+  const gameStarted = history.length > 0;
 
   const [selected, setSelected] = useState<Square | null>(null);
   const [dragOverSquare, setDragOverSquare] = useState<Square | null>(null);
@@ -136,19 +154,25 @@ export function ChessBoard({ game }: { game: ChessSpec }) {
   useEffect(() => {
     if (over || turn !== computer) return;
     const timer = setTimeout(() => {
-      const move = chooseChessMove(new Chess(chess.fen()), game.difficulty);
+      const move = chooseChessMove(new Chess(chess.fen()), difficulty);
       if (move) {
         commitMove(move.from, move.to, move.promotion as PromotionPiece | undefined);
       }
     }, 420);
     return () => clearTimeout(timer);
-  }, [chess, turn, over, computer, game.difficulty, commitMove]);
+  }, [chess, turn, over, computer, difficulty, commitMove]);
 
   const reset = () => {
     setHistory([]);
     setSelected(null);
     setLastMove(null);
     setPendingPromotion(null);
+  };
+
+  // Reachable only while `gameStarted` is false — the toggle disables itself
+  // otherwise — so there's no in-progress position to reassign.
+  const handlePlayerColorChange = (value: "first" | "second") => {
+    setPlayerColor(value === "first" ? "white" : "black");
   };
 
   const ranks = human === "w" ? RANKS_ORDER : [...RANKS_ORDER].reverse();
@@ -172,13 +196,27 @@ export function ChessBoard({ game }: { game: ChessSpec }) {
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-7 p-10">
-      <header className="text-center">
-        <h2 className="text-lg font-medium tracking-tight">{game.title}</h2>
-        <p className="mt-1.5 text-xs text-muted">
-          You are{" "}
-          <span className="text-foreground">{game.playerColor}</span> ·{" "}
-          <span className="text-foreground">{game.difficulty}</span>
-        </p>
+      <header className="flex flex-col items-center gap-4 text-center">
+        <div>
+          <h2 className="text-lg font-medium tracking-tight">{game.title}</h2>
+          <p className="mt-1.5 text-xs text-muted">
+            You are <span className="text-foreground">{playerColor}</span>
+          </p>
+        </div>
+        <div className="flex items-start gap-6">
+          <TurnOrderToggle
+            value={playerColor === "white" ? "first" : "second"}
+            onChange={handlePlayerColorChange}
+            disabled={gameStarted}
+            firstLabel="Play white"
+            secondLabel="Play black"
+          />
+          <DifficultySlider
+            levels={DIFFICULTY_LEVELS}
+            value={difficulty}
+            onChange={setDifficulty}
+          />
+        </div>
       </header>
 
       <div className="relative">

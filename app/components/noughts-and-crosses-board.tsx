@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { DifficultySlider } from "@/app/components/difficulty-slider";
+import { TurnOrderToggle } from "@/app/components/turn-order-toggle";
 import type { NoughtsAndCrossesSpec } from "@/lib/game";
 import {
   chooseMove,
@@ -12,6 +14,15 @@ import {
   type Mark,
 } from "@/lib/tic-tac-toe";
 
+const DIFFICULTY_LEVELS: {
+  value: NoughtsAndCrossesSpec["difficulty"];
+  label: string;
+}[] = [
+  { value: "easy", label: "Easy" },
+  { value: "medium", label: "Medium" },
+  { value: "perfect", label: "Perfect" },
+];
+
 export function NoughtsAndCrossesBoard({
   game,
 }: {
@@ -20,14 +31,23 @@ export function NoughtsAndCrossesBoard({
   const human = game.playerMark;
   const computer = other(human);
 
+  // Local, not part of the spec: both controls adjust these live, without
+  // needing the agent. Difficulty only affects the *next* computer move, so
+  // it's safe to change anytime. Who goes first can't be — it would reassign
+  // whose pieces are whose mid-game — so it's only settable while the board
+  // is still empty; see `gameStarted` below.
+  const [firstMove, setFirstMove] = useState(game.firstMove);
+  const [difficulty, setDifficulty] = useState(game.difficulty);
+
   const [board, setBoard] = useState<Board>(EMPTY_BOARD);
   const [turn, setTurn] = useState(() =>
-    game.firstMove === "player" ? human : computer,
+    firstMove === "player" ? human : computer,
   );
 
   const won = findWinner(board);
   const draw = !won && isFull(board);
   const over = Boolean(won) || draw;
+  const gameStarted = board.some((cell) => cell !== null);
 
   const play = useCallback((square: number, mark: Mark) => {
     setBoard((prev) => {
@@ -44,15 +64,23 @@ export function NoughtsAndCrossesBoard({
   useEffect(() => {
     if (over || turn !== computer) return;
     const timer = setTimeout(() => {
-      const move = chooseMove(board, computer, game.difficulty);
+      const move = chooseMove(board, computer, difficulty);
       if (move !== null) play(move, computer);
     }, 420);
     return () => clearTimeout(timer);
-  }, [board, turn, computer, over, game.difficulty, play]);
+  }, [board, turn, computer, over, difficulty, play]);
 
   const reset = () => {
     setBoard(EMPTY_BOARD);
-    setTurn(game.firstMove === "player" ? human : computer);
+    setTurn(firstMove === "player" ? human : computer);
+  };
+
+  // Reachable only while `gameStarted` is false — the toggle disables itself
+  // otherwise — so it's always safe to also move `turn` immediately.
+  const handleFirstMoveChange = (value: "first" | "second") => {
+    const next = value === "first" ? "player" : "computer";
+    setFirstMove(next);
+    setTurn(next === "player" ? human : computer);
   };
 
   const status = won
@@ -67,13 +95,26 @@ export function NoughtsAndCrossesBoard({
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-7 p-10">
-      <header className="text-center">
-        <h2 className="text-lg font-medium tracking-tight">{game.title}</h2>
-        <p className="mt-1.5 text-xs text-muted">
-          You are <span className="text-foreground">{human}</span> · computer is{" "}
-          <span className="text-foreground">{computer}</span> ·{" "}
-          <span className="text-foreground">{game.difficulty}</span>
-        </p>
+      <header className="flex flex-col items-center gap-4 text-center">
+        <div>
+          <h2 className="text-lg font-medium tracking-tight">{game.title}</h2>
+          <p className="mt-1.5 text-xs text-muted">
+            You are <span className="text-foreground">{human}</span> · computer
+            is <span className="text-foreground">{computer}</span>
+          </p>
+        </div>
+        <div className="flex items-start gap-6">
+          <TurnOrderToggle
+            value={firstMove === "player" ? "first" : "second"}
+            onChange={handleFirstMoveChange}
+            disabled={gameStarted}
+          />
+          <DifficultySlider
+            levels={DIFFICULTY_LEVELS}
+            value={difficulty}
+            onChange={setDifficulty}
+          />
+        </div>
       </header>
 
       <div className="grid grid-cols-3 gap-2">

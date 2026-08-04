@@ -190,6 +190,14 @@ version of tic-tac-toe or chess.
   `useMemo` when it changes — see `chess-board.tsx` for the pattern, including
   why a fresh `useMemo`'d instance still gets correct repetition detection
   (full replay from the start, not a bare FEN restore).
+- **Spec fields aren't necessarily fixed for the life of a game.** Difficulty
+  and turn order in both board components are local state *seeded* from the
+  spec, not read from it every render — the difficulty slider changes its
+  state live, since nothing about a computer move depends on the *previous*
+  difficulty. Turn order can't work that way (changing it mid-game would
+  reassign whose pieces are whose), so its toggle is only enabled while a
+  `gameStarted` check is false. If a third game adds a live-adjustable
+  setting, ask which category it's in before wiring it up.
 
 ## When you're stuck
 
