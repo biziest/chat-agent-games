@@ -16,6 +16,7 @@ import {
   type CustomGameSpec,
   type GameSpec,
 } from "@/lib/game";
+import { buildResumeMessageText } from "@/lib/resume-message";
 import {
   getSavedGamesServerSnapshot,
   getSavedGamesSnapshot,
@@ -34,7 +35,9 @@ import type { chatAgent } from "@/trigger/chat";
 // describing it in the lobby chat (see `lobbyChat` below), and this session's
 // `chat` *is* that same conversation, claimed once the model built something.
 // "menu" origin = a catalog pick or a saved-library launch, which starts a
-// fresh, pre-seeded chat instead (see `seedMessages`).
+// fresh chat with one real resume turn already sent — see
+// `buildResumeMessageText` in lib/resume-message.ts for why a real turn is
+// required here and a client-side-only fake one wouldn't do.
 type GameSession = {
   id: string;
   spec: GameSpec;
@@ -130,24 +133,25 @@ export function Workspace() {
 
   // Starts (or, given a stable `sessionId` that's already open, resumes) a
   // dedicated chat for a game launched without going through the lobby (a
-  // menu click or a saved-library pick). A fresh chat is seeded with a
-  // synthetic exchange so the model has the same context it would if the
-  // player had described it in chat — see `seedMessages`.
+  // menu click or a saved-library pick). A fresh chat immediately sends one
+  // real message asking the model to reproduce the existing spec via a real
+  // tool call — see `buildResumeMessageText` — rather than faking prior
+  // history client-side, which the backend would never actually see.
   const startSession = useCallback(
     (spec: GameSpec, toolName: string, label: string, sessionId = crypto.randomUUID()) => {
+      if (sessions.has(sessionId)) {
+        setState((prev) => ({ ...prev, activeSessionId: sessionId }));
+        return;
+      }
+      const chat = new Chat<UIMessage>({ id: sessionId, transport, messages: [] });
+      void chat.sendMessage({ text: buildResumeMessageText(toolName, label, spec) });
       setState((prev) => {
-        if (prev.sessions.has(sessionId)) return { ...prev, activeSessionId: sessionId };
-        const chat = new Chat<UIMessage>({
-          id: sessionId,
-          transport,
-          messages: seedMessages(spec, toolName, label),
-        });
-        const sessions = new Map(prev.sessions);
-        sessions.set(sessionId, { id: sessionId, spec, origin: "menu", chat });
-        return { ...prev, sessions, activeSessionId: sessionId };
+        const nextSessions = new Map(prev.sessions);
+        nextSessions.set(sessionId, { id: sessionId, spec, origin: "menu", chat });
+        return { ...prev, sessions: nextSessions, activeSessionId: sessionId };
       });
     },
-    [transport],
+    [transport, sessions],
   );
 
   // Launching a default game needs no intelligence, so this skips the model
@@ -295,37 +299,6 @@ function applyToolCall(
     chat: prev.lobbyChat,
   });
   return { lobbyChat: makeChat(transport), sessions, activeSessionId: sessionId };
-}
-
-/**
- * A synthetic user+assistant turn for a game that was launched without a
- * real conversation (a menu click or a saved-library pick), so its dedicated
- * chat starts with the same context an actual chat-built game would have —
- * the model can see what's on screen and edit it, instead of a follow-up
- * like "make it harder" landing with no idea a game exists yet.
- */
-function seedMessages(spec: GameSpec, toolName: string, label: string): UIMessage[] {
-  return [
-    {
-      id: crypto.randomUUID(),
-      role: "user",
-      parts: [{ type: "text", text: `Start ${label}.` }],
-    },
-    {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      parts: [
-        { type: "text", text: `Here's ${label} — ask me to change anything about it.` },
-        {
-          type: `tool-${toolName}`,
-          toolCallId: crypto.randomUUID(),
-          state: "output-available",
-          input: {},
-          output: spec,
-        },
-      ],
-    },
-  ] as unknown as UIMessage[];
 }
 
 /**

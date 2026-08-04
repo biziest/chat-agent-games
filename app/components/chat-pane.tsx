@@ -9,6 +9,7 @@ import {
   type UIMessage,
 } from "ai";
 import { GAME_TOOL_NAMES } from "@/lib/game";
+import { parseResumeMessageText } from "@/lib/resume-message";
 import {
   useEffect,
   useRef,
@@ -178,6 +179,22 @@ function Suggestions() {
 
 function Message({ message }: { message: UIMessage }) {
   if (message.role === "user") {
+    // Launching a game from the menu/library sends one real message asking
+    // the model to reproduce its exact spec (see lib/resume-message.ts) —
+    // technically necessary, but not something the player actually said, so
+    // it renders as a small status badge instead of a raw JSON chat bubble.
+    const resumeText = message.parts.filter(isTextUIPart).map((part) => part.text).join("");
+    const resume = parseResumeMessageText(resumeText);
+    if (resume) {
+      return (
+        <div className="flex justify-center">
+          <span className="rounded-full border border-border bg-surface px-3 py-1 text-[11px] text-muted">
+            ↻ Resumed {resume.label}
+          </span>
+        </div>
+      );
+    }
+
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%] rounded-2xl rounded-br-md border border-border bg-surface-raised px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
