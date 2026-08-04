@@ -164,12 +164,13 @@ function Suggestions() {
   return (
     <div className="pt-4">
       <p className="text-sm leading-relaxed text-muted">
-        Ask for a game and it&rsquo;ll appear on the right, ready to play.
+        Describe any game — it&rsquo;ll appear on the right, playable, no
+        code or new tab needed.
       </p>
       <ul className="mt-4 space-y-2 text-sm text-foreground/80">
         <li>&ldquo;Create a simple game like tic tac toe&rdquo;</li>
-        <li>&ldquo;Make the computer unbeatable&rdquo;</li>
-        <li>&ldquo;Let me play as O and you go first&rdquo;</li>
+        <li>&ldquo;Make me a game where I dodge falling blocks&rdquo;</li>
+        <li>&ldquo;A memory-matching card game with a timer&rdquo;</li>
       </ul>
     </div>
   );
