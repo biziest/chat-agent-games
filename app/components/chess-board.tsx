@@ -11,12 +11,11 @@ import {
 import { DifficultySlider } from "@/app/components/difficulty-slider";
 import { TurnOrderToggle } from "@/app/components/turn-order-toggle";
 import {
+  chessOrientation,
   chessOutcome,
   chooseChessMove,
-  FILES_ORDER,
   needsPromotionChoice,
   PIECE_GLYPH,
-  RANKS_ORDER,
 } from "@/lib/chess";
 import type { ChessSpec } from "@/lib/game";
 
@@ -175,8 +174,7 @@ export function ChessBoard({ game }: { game: ChessSpec }) {
     setPlayerColor(value === "first" ? "white" : "black");
   };
 
-  const ranks = human === "w" ? RANKS_ORDER : [...RANKS_ORDER].reverse();
-  const files = human === "w" ? FILES_ORDER : [...FILES_ORDER].reverse();
+  const { ranks, files } = chessOrientation(human);
 
   const status = pendingPromotion
     ? "Choose a promotion"

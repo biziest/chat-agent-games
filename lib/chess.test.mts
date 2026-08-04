@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Chess } from "chess.js";
 import {
+  chessOrientation,
   chessOutcome,
   chooseChessMove,
   needsPromotionChoice,
@@ -101,5 +102,36 @@ describe("chessOutcome", () => {
   it("detects stalemate", () => {
     const chess = new Chess("7k/5K2/6Q1/8/8/8/8/8 b - - 0 1");
     assert.equal(chessOutcome(chess), "stalemate");
+  });
+});
+
+describe("chessOrientation", () => {
+  it("puts white's back rank at the bottom with the a-file on the left", () => {
+    const { ranks, files } = chessOrientation("w");
+    assert.equal(ranks.at(-1), "1", "rank 1 should be the bottom row");
+    assert.equal(ranks[0], "8", "rank 8 should be the top row");
+    assert.equal(files[0], "a", "a-file should be on the left");
+    assert.equal(files.at(-1), "h", "h-file should be on the right");
+  });
+
+  it("puts black's back rank at the bottom with the h-file on the left", () => {
+    const { ranks, files } = chessOrientation("b");
+    assert.equal(ranks.at(-1), "8", "rank 8 should be the bottom row");
+    assert.equal(ranks[0], "1", "rank 1 should be the top row");
+    assert.equal(files[0], "h", "h-file should be on the left");
+    assert.equal(files.at(-1), "a", "a-file should be on the right");
+  });
+
+  it("matches standard board convention at the corners", () => {
+    // Playing white: a8 top-left, h1 bottom-right (a1 bottom-left, h8 top-right).
+    const white = chessOrientation("w");
+    assert.equal(`${white.files[0]}${white.ranks[0]}`, "a8");
+    assert.equal(`${white.files.at(-1)}${white.ranks.at(-1)}`, "h1");
+
+    // Playing black: the board is rotated 180° from White's view, so every
+    // corner lands on its diagonal opposite.
+    const black = chessOrientation("b");
+    assert.equal(`${black.files[0]}${black.ranks[0]}`, "h1");
+    assert.equal(`${black.files.at(-1)}${black.ranks.at(-1)}`, "a8");
   });
 });

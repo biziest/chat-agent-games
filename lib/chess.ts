@@ -178,3 +178,18 @@ export const PIECE_GLYPH: Record<string, Record<"w" | "b", string>> = {
 
 export const FILES_ORDER = FILES.split("");
 export const RANKS_ORDER = ["8", "7", "6", "5", "4", "3", "2", "1"];
+
+export type ChessOrientation = { ranks: string[]; files: string[] };
+
+/**
+ * Display order for ranks (top-to-bottom) and files (left-to-right) so the
+ * human's own back rank is always nearest them — the standard convention: play
+ * white and rank 1 is at the bottom with the a-file on your left; play black
+ * and the board is rotated 180°, so rank 8 is at the bottom with the h-file on
+ * your left.
+ */
+export function chessOrientation(human: "w" | "b"): ChessOrientation {
+  return human === "w"
+    ? { ranks: RANKS_ORDER, files: FILES_ORDER }
+    : { ranks: [...RANKS_ORDER].reverse(), files: [...FILES_ORDER].reverse() };
+}
