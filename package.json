@@ -1,0 +1,33 @@
+{
+  "name": "chat-agent-games",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.27",
+    "@ai-sdk/otel": "^1.0.48",
+    "@ai-sdk/react": "^4.0.51",
+    "@trigger.dev/sdk": "^4.5.9",
+    "ai": "^7.0.48",
+    "next": "16.2.12",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "tailwindcss": "^4",
+    "trigger.dev": "^4.5.9",
+    "typescript": "^5"
+  }
+}
