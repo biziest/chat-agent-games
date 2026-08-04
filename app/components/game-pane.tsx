@@ -1,13 +1,14 @@
 "use client";
 
 import { ChessBoard } from "@/app/components/chess-board";
+import { CustomGameBoard } from "@/app/components/custom-game-board";
 import { GameMenu } from "@/app/components/game-menu";
 import { NoughtsAndCrossesBoard } from "@/app/components/noughts-and-crosses-board";
-import type { GameId, GameSpec } from "@/lib/game";
+import type { CatalogGameId, GameSpec } from "@/lib/game";
 
 type Props = {
   game: { id: string; spec: GameSpec } | null;
-  onSelectGame: (id: GameId) => void;
+  onSelectGame: (id: CatalogGameId) => void;
   onExitGame: () => void;
 };
 
@@ -34,5 +35,7 @@ function Board({ spec }: { spec: GameSpec }) {
       return <NoughtsAndCrossesBoard game={spec} />;
     case "chess":
       return <ChessBoard game={spec} />;
+    case "custom":
+      return <CustomGameBoard game={spec} />;
   }
 }

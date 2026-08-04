@@ -1,4 +1,4 @@
-import type { GameSpec } from "./game";
+import type { NoughtsAndCrossesSpec } from "./game";
 
 export type Mark = "X" | "O";
 export type Cell = Mark | null;
@@ -90,7 +90,7 @@ function randomMove(board: Board): number {
 export function chooseMove(
   board: Board,
   me: Mark,
-  difficulty: GameSpec["difficulty"],
+  difficulty: NoughtsAndCrossesSpec["difficulty"],
 ): number | null {
   if (availableMoves(board).length === 0) return null;
   if (difficulty === "easy") return randomMove(board);

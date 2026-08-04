@@ -11,7 +11,7 @@ import {
   defaultGameSpec,
   gameSpecSchema,
   GAME_TOOL_NAMES,
-  type GameId,
+  type CatalogGameId,
   type GameSpec,
 } from "@/lib/game";
 // Type-only: erased at build time, so the server-only agent module never
@@ -72,7 +72,7 @@ export function Workspace() {
 
   // Launching a default game needs no intelligence, so this skips the model
   // entirely — see app/components/game-menu.tsx.
-  const handleSelectGame = useCallback((id: GameId) => {
+  const handleSelectGame = useCallback((id: CatalogGameId) => {
     setGame({ id: `menu-${id}-${crypto.randomUUID()}`, spec: defaultGameSpec(id) });
   }, []);
 

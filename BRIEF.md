@@ -28,29 +28,54 @@ get a good version of it, playable, without touching the code.
 
 ## What already works
 
-Two games ship as a working example of Phase A (below): noughts and crosses and
-chess, both built from a validated spec the agent authors and the frontend
-renders. This isn't a stub for you to replace — it's the pattern to copy when
-you add the third, fourth, and fifth games, and it's what you'll outgrow when
-you get to Phase B.
+Both phases below are implemented, not just planned: two curated games (Phase
+A) plus a working, if unhardened, path to arbitrary ones (Phase B, via
+`createCustomGame` — the agent writes a real HTML page and it runs in a
+sandboxed iframe). None of this is a stub for you to replace — it's the
+pattern to copy and the foundation to harden.
 
 | File | What's there |
 | --- | --- |
-| `lib/game.ts` | The spec contract: a `gameSpecSchema` discriminated union on `kind`, one branch per game, plus `GAME_CATALOG` (drives the on-screen menu) and `defaultGameSpec(id)`. **Read this first** — it's the shape everything else hangs off. |
+| `lib/game.ts` | The spec contract: a `gameSpecSchema` discriminated union on `kind`, one branch per game (including `custom`), plus `GAME_CATALOG`/`CatalogGameId`/`defaultGameSpec(id)` for the two curated games specifically — `custom` is deliberately excluded from those three, since arbitrary generated content has no sensible menu default. **Read this first** — it's the shape everything else hangs off. |
 | `lib/tic-tac-toe.ts`, `lib/chess.ts` | Per-game rules + computer opponent, framework-free. Chess wraps `chess.js` for legality/check/mate and adds a small alpha-beta search (`chooseChessMove`) — read the comments there before touching search depth or the eval function. |
-| `lib/*.test.mts` | Run with `npm test` (Node's built-in test runner, no extra deps). The chess suite is fixture-based (mate-in-1, a hanging piece, a known stalemate) rather than "never loses," since unlike tic-tac-toe, chess isn't solved at any depth this can search. |
-| `trigger/chat.ts` | The `chat.agent` task, with one tool per game (`createNoughtsAndCrosses`, `createChess`). This is the pattern for a third game: a tool whose `execute` normalizes input into a spec via `lib/game.ts`. |
+| `lib/*.test.mts` | Run with `npm test` (Node's built-in test runner, no extra deps). The chess suite is fixture-based (mate-in-1, a hanging piece, a known stalemate) rather than "never loses," since unlike tic-tac-toe, chess isn't solved at any depth this can search. There's nothing here for `custom` games — see "What's not done yet" below. |
+| `trigger/chat.ts` | The `chat.agent` task, with one tool per curated game (`createNoughtsAndCrosses`, `createChess`) plus `createCustomGame` for everything else. The system prompt is where the real work is for the third tool — it's what tells the model to write self-contained HTML, match the app's theme, avoid external resources, and treat a follow-up as "edit the HTML you already wrote," not "start over." Read it before changing any of the three. |
 | `app/components/workspace.tsx` | Owns the one `useChat` instance. Derives the active game from the newest completed create-game tool call **or** a menu selection — read the comment on `appliedToolCallId` before changing this; it's the one subtle part. |
 | `app/components/game-pane.tsx` | Dispatches on `spec.kind` to the right board component. Add a `case` here for each new game. |
-| `app/components/game-menu.tsx`, `noughts-and-crosses-board.tsx`, `chess-board.tsx` | The menu, and one board component per game. |
+| `app/components/game-menu.tsx`, `noughts-and-crosses-board.tsx`, `chess-board.tsx`, `custom-game-board.tsx` | The menu (curated games only — `custom` has no default to launch from a click) and one board component per game. `custom-game-board.tsx` is just a title plus a `sandbox="allow-scripts"` iframe — no rules engine, since the agent's HTML is the whole game. |
 | `app/actions.ts` | Session creation + session-scoped token minting. You shouldn't need to change this. |
 
-Verified working end to end: both games build and play correctly, a follow-up
-turn changes settings on the existing game without restarting the wrong one,
-switching from one game kind to another mid-conversation works, and an
-unsupported request gets an honest decline instead of a fake build. See
+Verified working end to end: both curated games build and play correctly, a
+follow-up turn changes settings on the existing game without restarting the
+wrong one, switching from one game kind to another mid-conversation works,
+and — for `createCustomGame` specifically — a from-scratch description ("dodge
+falling blocks, arrow keys to move") produced a complete, playable canvas game
+with a HUD, start/game-over screens, keyboard and touch controls, and a
+difficulty ramp on the first try, and a follow-up ("make the blocks fall
+faster") came back as a small, targeted diff — not a full rewrite. See
 `README.md` for setup (you'll need your own `.env` — it's gitignored, ask Matt
 for the keys).
+
+### What's not done yet
+
+`createCustomGame` works, but "works" here means "produced a good result in
+testing," not "hardened." Concretely still open:
+
+- **No error feedback loop.** If the generated HTML throws a JS error or the
+  game is simply broken, nothing tells the model or shows the user anything
+  beyond a silently-failing iframe. The fix is probably: catch errors inside
+  the generated page (the system prompt could require a top-level
+  `window.onerror` that renders a visible message), or a way for the frontend
+  to report back "this didn't work" so the user's next chat turn has that
+  context. Neither exists yet.
+- **Context growth.** Each edit sends the full previous HTML back through
+  conversation history (that's *by design* — it's how the model edits instead
+  of rewriting), but a few rounds of edits on a meaty game will add up. Watch
+  for this once you're testing longer sessions; `chat.agent`'s compaction
+  options (see the Backend docs) are the likely lever.
+- **Quality is inherently variable.** One good result on one prompt isn't a
+  guarantee — test with a spread of game types (turn-based vs. real-time,
+  keyboard vs. mouse, single-screen vs. scrolling) before trusting it broadly.
 
 ## The one big decision
 
@@ -82,15 +107,20 @@ to React components. Worth reading before you extend this one further.
 
 ### Phase B — the agent writes the game
 
-The agent emits actual code (HTML/JS, or a React component), and you run it in a
-sandboxed `<iframe sandbox="allow-scripts">` with no same-origin access. This is
-what makes long, original prompts work.
+The agent emits actual code, run in a sandboxed `<iframe sandbox="allow-scripts">`
+with no same-origin access. This is what makes long, original prompts work, and
+it's implemented — `createCustomGame` in `trigger/chat.ts`, rendered by
+`custom-game-board.tsx`. The tradeoff that made this worth doing last (after
+Phase A, not before) was real: you're executing model-authored code, and the
+system prompt telling it what to write is where almost all of the actual
+difficulty lives — self-contained HTML, matching the app's theme, a real game
+loop, controls, a restart path, and treating an edit as "revise the HTML you
+already wrote," not "start over." Read that prompt before changing it; it took
+real iteration to get a first version producing consistently playable results.
 
-The tradeoffs get real here: you're executing model-authored code, so the sandbox
-boundary matters, and errors need a path back to the model so it can fix its own
-output. Don't start here. Get Phase A working end to end first — you'll learn
-what the games actually need, and that tells you what Phase B's interface should
-look like.
+What it doesn't do yet — see "What's not done yet" above — is close the loop
+when the generated code is actually broken. That's the next real problem here,
+not building Phase B from scratch.
 
 ## The mistake to avoid
 
@@ -131,14 +161,27 @@ wrong game or losing unrelated settings? It does today — `trigger/chat.ts`'s
 prompt and `workspace.tsx`'s tool-call tracking are why; understand both before
 you touch either.
 
-**3. Arbitrary games — this is the real target now.** Long prompts describing
-original games. This is where Phase B lands, and it's genuinely unsolved in
-this repo — everything above was scaffolding to learn the plumbing from, not a
-foundation Phase B builds on top of (a spec-rendering pane and a
-code-execution pane are different enough that you may end up with a separate
-component tree for Phase B games, dispatched alongside the `kind` switch in
-`game-pane.tsx`). Test with something with unusual mechanics — not a re-skinned
-version of tic-tac-toe or chess.
+**3. Arbitrary games — done (first pass).** `createCustomGame` writes a
+complete HTML page per request, run in a sandboxed iframe alongside the two
+curated games' component tree (dispatched by the same `spec.kind` switch in
+`game-pane.tsx`, not a separate system — turned out not to need one). Verified
+on one real, non-trivial prompt with a genuinely good result and a working
+follow-up edit. That's a proof it works, not proof it's *reliable* — the real
+remaining work is the hardening in "What's not done yet" above (error
+feedback, context growth over many edits, testing a spread of game types),
+plus judgment calls only you can make by testing more of them: does a
+turn-based card game come out as clean as a real-time canvas game? Does a
+multi-screen or multiplayer-feeling request degrade gracefully? Push on the
+kinds of games the one tested example *doesn't* look like.
+
+**4. Beyond that.** Once Phase B is solid, open questions worth thinking about:
+should custom games get their own difficulty/settings UI the way the curated
+games do (nothing stops the agent's HTML from building its own controls, but
+should the app standardize this)? Should there be a way to save/share a
+generated game? Should long-running custom games (anything with meaningful
+state) survive a page refresh the way the curated games currently don't
+either? None of this is required — just where the project goes if it keeps
+growing.
 
 ## Pointers
 
@@ -191,13 +234,24 @@ version of tic-tac-toe or chess.
   why a fresh `useMemo`'d instance still gets correct repetition detection
   (full replay from the start, not a bare FEN restore).
 - **Spec fields aren't necessarily fixed for the life of a game.** Difficulty
-  and turn order in both board components are local state *seeded* from the
-  spec, not read from it every render — the difficulty slider changes its
-  state live, since nothing about a computer move depends on the *previous*
-  difficulty. Turn order can't work that way (changing it mid-game would
-  reassign whose pieces are whose), so its toggle is only enabled while a
-  `gameStarted` check is false. If a third game adds a live-adjustable
-  setting, ask which category it's in before wiring it up.
+  and turn order in both curated board components are local state *seeded*
+  from the spec, not read from it every render — the difficulty slider
+  changes its state live mid-game, since nothing about a computer move
+  depends on the *previous* difficulty. Turn order can't work that way
+  (changing it mid-game would reassign whose pieces are whose), so its toggle
+  always resets the game alongside changing the setting, rather than trying
+  to reinterpret the position in progress — see `TurnOrderToggle`'s `note`
+  prop for how that's surfaced to the user. If a third game adds a
+  live-adjustable setting, ask which category it's in (safe to change live,
+  vs. needs a reset) before wiring it up.
+- **The custom-game iframe has no channel back to the app.**
+  `sandbox="allow-scripts"` (no `allow-same-origin`) means the generated page
+  can't reach the parent DOM, cookies, or storage — deliberate, it's the
+  entire security boundary the feature relies on. That also means there's no
+  way today for a generated game to report a score, ask the model something
+  mid-game, or otherwise talk to the rest of the app. If that's ever needed,
+  it's a `postMessage` bridge you'd add on purpose, not something to route
+  around the sandbox for.
 
 ## When you're stuck
 

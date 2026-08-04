@@ -1,14 +1,16 @@
 "use client";
 
-import { GAME_CATALOG, type GameId } from "@/lib/game";
+import { GAME_CATALOG, type CatalogGameId } from "@/lib/game";
 
 /**
- * Every game the agent knows how to build, as clickable cards. Picking one
- * launches its default settings directly — client-side, no model call — since
- * starting a default game needs no intelligence. Ask in chat instead for
- * anything that needs a decision made (a mark, a difficulty, a color).
+ * The two curated games, as clickable cards — not the full catalog of what's
+ * buildable. Picking one launches its default settings directly, client-side,
+ * no model call, since starting a default game needs no intelligence.
+ * Anything else (a specific difficulty, or a game that isn't on this list at
+ * all) goes through chat, where the agent can also write an arbitrary game
+ * from scratch — see `createCustomGame` in trigger/chat.ts.
  */
-export function GameMenu({ onSelect }: { onSelect: (id: GameId) => void }) {
+export function GameMenu({ onSelect }: { onSelect: (id: CatalogGameId) => void }) {
   return (
     <div className="flex flex-1 items-center justify-center p-10">
       <div className="w-full max-w-md">
@@ -23,8 +25,8 @@ export function GameMenu({ onSelect }: { onSelect: (id: GameId) => void }) {
             Pick a game, or describe one
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-muted">
-            Click one below for the default settings, or ask in chat for
-            something specific — a difficulty, a color, who goes first.
+            Click one below for the default settings, or describe any game in
+            chat — from a quick tweak to something completely different.
           </p>
         </div>
 

@@ -102,16 +102,56 @@ export function normalizeChessSpec(input: CreateChessInput = {}): ChessSpec {
   };
 }
 
+// ---------- Custom (arbitrary, agent-authored) games ----------
+
+/**
+ * The escape valve for anything that isn't one of the curated games above: the
+ * agent writes an actual, complete HTML page — its own <style> and <script>,
+ * fully self-contained — and the frontend renders it in a sandboxed iframe. No
+ * difficulty or turn-order fields here; whatever settings a custom game needs
+ * are the agent's problem to build into the page itself.
+ */
+export const customGameSpecSchema = z.object({
+  kind: z.literal("custom"),
+  title: z.string(),
+  html: z.string(),
+});
+
+export type CustomGameSpec = z.infer<typeof customGameSpecSchema>;
+
+export const createCustomGameInputSchema = z.object({
+  title: z
+    .string()
+    .optional()
+    .describe("Short display name for the game."),
+  html: z
+    .string()
+    .describe(
+      "A complete, self-contained HTML document implementing the game — <style> and <script> inline in the same document. No external scripts, stylesheets, fonts, or images: it runs in a sandboxed iframe with no network access, so anything external silently fails to load.",
+    ),
+});
+
+export type CreateCustomGameInput = z.infer<typeof createCustomGameInputSchema>;
+
+export function normalizeCustomGameSpec(
+  input: CreateCustomGameInput,
+): CustomGameSpec {
+  return {
+    kind: "custom",
+    title: input.title?.trim() || "Custom Game",
+    html: input.html,
+  };
+}
+
 // ---------- Union + catalog ----------
 
 export const gameSpecSchema = z.discriminatedUnion("kind", [
   noughtsAndCrossesSpecSchema,
   chessSpecSchema,
+  customGameSpecSchema,
 ]);
 
 export type GameSpec = z.infer<typeof gameSpecSchema>;
-
-export type GameId = GameSpec["kind"];
 
 /**
  * Names of the tools that create/replace a game — one per kind, declared in
@@ -121,25 +161,35 @@ export type GameId = GameSpec["kind"];
 export const GAME_TOOL_NAMES: ReadonlySet<string> = new Set([
   "createNoughtsAndCrosses",
   "createChess",
+  "createCustomGame",
 ]);
 
+/**
+ * The games with a menu entry and a sensible default spec — deliberately
+ * narrower than `GameSpec["kind"]`. A custom game has no "default": there's no
+ * one arbitrary game to launch with a click, so `"custom"` is excluded here
+ * and only reachable by describing something in chat.
+ */
+export type CatalogGameId = "noughts-and-crosses" | "chess";
+
 /** Drives both the on-screen menu and the tool descriptions in the prompt. */
-export const GAME_CATALOG: { id: GameId; title: string; blurb: string }[] = [
-  {
-    id: "noughts-and-crosses",
-    title: "Noughts & Crosses",
-    blurb: "3x3 grid, three in a row wins. Difficulty from random to unbeatable.",
-  },
-  {
-    id: "chess",
-    title: "Chess",
-    blurb:
-      "Full rules — castling, en passant, promotion — against a computer opponent.",
-  },
-];
+export const GAME_CATALOG: { id: CatalogGameId; title: string; blurb: string }[] =
+  [
+    {
+      id: "noughts-and-crosses",
+      title: "Noughts & Crosses",
+      blurb: "3x3 grid, three in a row wins. Difficulty from random to unbeatable.",
+    },
+    {
+      id: "chess",
+      title: "Chess",
+      blurb:
+        "Full rules — castling, en passant, promotion — against a computer opponent.",
+    },
+  ];
 
 /** The spec a catalog entry launches with when picked with no other input. */
-export function defaultGameSpec(id: GameId): GameSpec {
+export function defaultGameSpec(id: CatalogGameId): GameSpec {
   switch (id) {
     case "noughts-and-crosses":
       return normalizeNoughtsAndCrossesSpec();
