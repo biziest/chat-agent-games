@@ -167,13 +167,20 @@ export function chessOutcome(chess: Chess): ChessOutcome {
   return null;
 }
 
+// Swapped from the "natural" Unicode mapping (U+2654-2659 for white,
+// U+265A-265F for black) on purpose: the U+2654 set renders as hollow/outline
+// shapes and reads as faint on a dark background, while the U+265A set is
+// solid and reads clearly. Using the solid glyphs for the chess-logic-white
+// side and the outline glyphs for chess-logic-black keeps both legible here —
+// `piece.color`/`aria-label` elsewhere still say "white"/"black" correctly,
+// this only changes which symbol represents each.
 export const PIECE_GLYPH: Record<string, Record<"w" | "b", string>> = {
-  p: { w: "♙", b: "♟" },
-  n: { w: "♘", b: "♞" },
-  b: { w: "♗", b: "♝" },
-  r: { w: "♖", b: "♜" },
-  q: { w: "♕", b: "♛" },
-  k: { w: "♔", b: "♚" },
+  p: { w: "♟", b: "♙" },
+  n: { w: "♞", b: "♘" },
+  b: { w: "♝", b: "♗" },
+  r: { w: "♜", b: "♖" },
+  q: { w: "♛", b: "♕" },
+  k: { w: "♚", b: "♔" },
 };
 
 export const FILES_ORDER = FILES.split("");
