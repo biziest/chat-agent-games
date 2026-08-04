@@ -43,8 +43,9 @@ pattern to copy and the foundation to harden.
 | `trigger/chat.ts` | The `chat.agent` task, with one tool per curated game (`createNoughtsAndCrosses`, `createChess`) plus `createCustomGame` for everything else. The system prompt is where the real work is for the third tool — it's what tells the model to write self-contained HTML, match the app's theme, avoid external resources, and treat a follow-up as "edit the HTML you already wrote," not "start over." Read it before changing any of the three. |
 | `app/components/workspace.tsx` | Owns the one `useChat` instance. Derives the active game from the newest completed create-game tool call **or** a menu selection — read the comment on `appliedToolCallId` before changing this; it's the one subtle part. |
 | `app/components/game-pane.tsx` | Dispatches on `spec.kind` to the right board component. Add a `case` here for each new game. |
-| `app/components/game-menu.tsx`, `noughts-and-crosses-board.tsx`, `chess-board.tsx`, `custom-game-board.tsx` | The menu — the two curated games plus any saved custom games, grouped into genre folders (native `<details>`, not custom expand/collapse state) — and one board component per game. `custom-game-board.tsx` is just a title, an optional "keep this game?" prompt, and a `sandbox="allow-scripts"` iframe — no rules engine, since the agent's HTML is the whole game. The save prompt only shows for a game fresh out of chat (see `origin` on `ActiveGame` in `workspace.tsx`) — there's no way to detect "you finished playing" from inside the sandboxed iframe, so it's offered once at generation time rather than triggered by anything happening in-game. |
+| `app/components/game-menu.tsx`, `noughts-and-crosses-board.tsx`, `chess-board.tsx`, `custom-game-board.tsx` | The menu — the two curated games plus any saved custom games, grouped into genre folders (native `<details>`, not custom expand/collapse state) — and one board component per game. `custom-game-board.tsx` is a title, an optional "keep this game?" prompt, and a `sandbox="allow-scripts"` iframe — no rules engine, since the agent's HTML is the whole game. It also fetches the vendored `/vendor/three.min.js` once (module-level cached promise) and inlines it into the iframe's `srcDoc` ahead of the model's own `<script>`, so custom games get a `THREE` global without the model loading or bundling it itself — see `scripts/bundle-three.mjs` below for where that file comes from. The save prompt only shows for a game fresh out of chat (see `origin` on `ActiveGame` in `workspace.tsx`) — there's no way to detect "you finished playing" from inside the sandboxed iframe, so it's offered once at generation time rather than triggered by anything happening in-game. |
 | `app/actions.ts` | Session creation + session-scoped token minting. You shouldn't need to change this. |
+| `scripts/bundle-three.mjs`, `public/vendor/three.min.js` | `three` ships ESM/CJS only now (no global/UMD build), so this esbuild script bundles it into an IIFE exposing `window.THREE`, checked in at `public/vendor/three.min.js` and re-run (`npm run bundle:three`) after bumping the `three` version. Loading it via a same-origin static file, rather than a CDN `<script src>` inside the game's HTML, sidesteps depending on cross-origin script loading working inside a `sandbox="allow-scripts"` iframe with no network guarantees. |
 
 Verified working end to end: both curated games build and play correctly, a
 follow-up turn changes settings on the existing game without restarting the
@@ -53,7 +54,12 @@ and — for `createCustomGame` specifically — a from-scratch description ("dod
 falling blocks, arrow keys to move") produced a complete, playable canvas game
 with a HUD, start/game-over screens, keyboard and touch controls, and a
 difficulty ramp on the first try, and a follow-up ("make the blocks fall
-faster") came back as a small, targeted diff — not a full rewrite. See
+faster") came back as a small, targeted diff — not a full rewrite. Custom
+games are required to render with three.js (a `THREE` global, injected by
+`custom-game-board.tsx` at render time — see the file table below) rather
+than plain canvas/DOM; a real smoke-test prompt ("a ball that bounces around
+a box, arrow keys nudge it") came back using `THREE.WebGLRenderer` correctly,
+with no attempt to load or import three.js itself. See
 `README.md` for setup (you'll need your own `.env` — it's gitignored, ask Matt
 for the keys).
 

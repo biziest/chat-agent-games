@@ -15,6 +15,9 @@ const eslintConfig = defineConfig([
     // Bundles emitted by `trigger dev` / `trigger deploy` — generated code, and
     // linting it buries real findings under ~1900 warnings.
     ".trigger/**",
+    // Vendored, pre-minified third-party bundle (see scripts/bundle-three.mjs)
+    // — not source we own, and linting it buries real findings the same way.
+    "public/vendor/**",
   ]),
 ]);
 

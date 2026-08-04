@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test \"lib/**/*.test.mts\""
+    "test": "node --test \"lib/**/*.test.mts\"",
+    "bundle:three": "node scripts/bundle-three.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.27",
@@ -29,6 +30,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "tailwindcss": "^4",
+    "three": "^0.185.1",
     "trigger.dev": "^4.5.9",
     "typescript": "^5"
   }

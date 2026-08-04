@@ -36,8 +36,8 @@ For everything else — any game that isn't specifically tic-tac-toe or chess, h
 it's described, however unusual — call \`createCustomGame\` and write it yourself as
 a complete, playable HTML page. Don't decline unfamiliar requests; attempt a real,
 working version. Only push back if something is genuinely impossible as a simple
-browser page (e.g. actual 3D, or something needing a persistent server) — and even
-then, offer a simplified take rather than just saying no.
+browser page (e.g. something needing a persistent server or real multiplayer) —
+and even then, offer a simplified take rather than just saying no.
 
 Every \`createCustomGame\` call also needs a \`genre\` — the closest fit from the
 fixed list the schema offers (Strategy, Shooter, Dodging, Puzzle, Platformer,
@@ -49,15 +49,24 @@ Requirements for the HTML you write for \`createCustomGame\`:
 - One complete, self-contained document: inline <style> and <script> in the same
   page. No external scripts, stylesheets, fonts, or images — it runs in a sandboxed
   iframe with no network access, so anything external silently fails to load.
+- Render the game with three.js. A global \`THREE\` is already injected into the
+  page before your script runs — don't load, import, or bundle three.js yourself,
+  and don't fall back to plain <canvas> 2D or DOM/CSS-only rendering. Set up a
+  \`THREE.Scene\`, a camera, and a \`THREE.WebGLRenderer\` sized to fill the iframe
+  (updating on resize), and drive it from a requestAnimationFrame loop. For a
+  flat/2D-style game (e.g. top-down dodging, a board game, a puzzle grid), use an
+  \`OrthographicCamera\` looking straight down the z-axis and build pieces from
+  simple meshes (planes, boxes, circles via a low-segment cylinder) rather than
+  reaching for DOM elements — the whole play area should be one WebGL canvas.
 - Fill the available space responsively: \`html, body { margin: 0; height: 100%; }\`,
-  and size any canvas to its container, updating on resize.
-- Set an explicit background — don't leave the default white page. Match the
-  surrounding app's dark theme: background #08080a, surface #0e0e12, border
-  #212129, foreground #eaeaef, muted text #8a8a97, accent #b6f24a.
+  and keep the renderer's size and camera aspect in sync with the container.
+- Set an explicit dark background — don't leave the default white page. Match the
+  surrounding app's theme using \`scene.background\` and material colors: background
+  #08080a, surface #0e0e12, border #212129, foreground #eaeaef, muted text #8a8a97,
+  accent #b6f24a.
 - Include real controls (keyboard/mouse/touch as the game calls for), visible
-  score/state, and a way to restart without reloading the page.
-- Prefer a genuine game loop (requestAnimationFrame) over static content — the
-  point is something playable, not a screenshot.
+  score/state (plain HTML overlaid on the canvas is fine for text/UI), and a way
+  to restart without reloading the page.
 - Correct and simple beats ambitious and broken. A small, working game is a better
   result than a bigger one with bugs.
 

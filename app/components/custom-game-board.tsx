@@ -1,7 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CustomGameSpec } from "@/lib/game";
+
+// Fetched once and reused for every custom game shown this session — the
+// bundle (see scripts/bundle-three.mjs) is a static asset, not something that
+// changes per game, so there's no reason to refetch it on every switch.
+let threeSourcePromise: Promise<string> | null = null;
+function loadThreeSource(): Promise<string> {
+  threeSourcePromise ??= fetch("/vendor/three.min.js").then((res) => res.text());
+  return threeSourcePromise;
+}
+
+/**
+ * Builds the final iframe document: the vendored three.js bundle inlined
+ * first, so a global `THREE` exists before the model's own script runs, then
+ * the model-authored page unchanged. Done here at render time rather than
+ * baked into the stored spec, so the ~700KB library never touches
+ * conversation history or the saved-games localStorage entry — see
+ * lib/saved-games.ts.
+ */
+function withThree(html: string, threeSource: string): string {
+  const script = `<script>${threeSource}</script>`;
+  const headMatch = /<head[^>]*>/i.exec(html);
+  if (headMatch) {
+    const index = headMatch.index + headMatch[0].length;
+    return html.slice(0, index) + script + html.slice(index);
+  }
+  return script + html;
+}
 
 /**
  * Renders an arbitrary, agent-authored game. Unlike the curated games, there's
@@ -21,6 +48,17 @@ export function CustomGameBoard({
 }) {
   const [saved, setSaved] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [threeSource, setThreeSource] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadThreeSource().then((source) => {
+      if (!cancelled) setThreeSource(source);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSave = () => {
     onSave();
@@ -62,12 +100,18 @@ export function CustomGameBoard({
         </div>
       ) : null}
 
-      <iframe
-        title={game.title}
-        srcDoc={game.html}
-        sandbox="allow-scripts"
-        className="min-h-0 flex-1 rounded-xl border border-border"
-      />
+      {threeSource ? (
+        <iframe
+          title={game.title}
+          srcDoc={withThree(game.html, threeSource)}
+          sandbox="allow-scripts"
+          className="min-h-0 flex-1 rounded-xl border border-border"
+        />
+      ) : (
+        <div className="flex flex-1 items-center justify-center rounded-xl border border-border text-sm text-muted">
+          Loading graphics engine…
+        </div>
+      )}
     </div>
   );
 }

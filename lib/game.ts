@@ -155,7 +155,7 @@ export const createCustomGameInputSchema = z.object({
   html: z
     .string()
     .describe(
-      "A complete, self-contained HTML document implementing the game — <style> and <script> inline in the same document. No external scripts, stylesheets, fonts, or images: it runs in a sandboxed iframe with no network access, so anything external silently fails to load.",
+      "A complete, self-contained HTML document implementing the game — <style> and <script> inline in the same document. No external scripts, stylesheets, fonts, or images: it runs in a sandboxed iframe with no network access, so anything external silently fails to load. Render with three.js: a global `THREE` is injected into the page before this script runs, so don't load or bundle three.js yourself.",
     ),
 });
 
