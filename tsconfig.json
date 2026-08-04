@@ -31,5 +31,8 @@
     "**/*.mts",
     "trigger.config.ts"
   ],
-  "exclude": ["node_modules"]
+  // *.test.mts run directly via `node --test`, which resolves the `.ts`
+  // extension imports itself via type-stripping — a shape tsc's own
+  // module resolution rejects (TS5097) without allowImportingTsExtensions.
+  "exclude": ["node_modules", "**/*.test.mts"]
 }

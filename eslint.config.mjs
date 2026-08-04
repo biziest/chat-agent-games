@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Bundles emitted by `trigger dev` / `trigger deploy` — generated code, and
+    // linting it buries real findings under ~1900 warnings.
+    ".trigger/**",
   ]),
 ]);
 

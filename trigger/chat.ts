@@ -1,20 +1,44 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { chat } from "@trigger.dev/sdk/ai";
-import { stepCountIs, streamText } from "ai";
+import { stepCountIs, streamText, tool } from "ai";
+import { createGameInputSchema, normalizeGameSpec } from "../lib/game";
 
-const SYSTEM_PROMPT = `You are the assistant embedded in a Next.js app.
+const SYSTEM_PROMPT = `You are the assistant in an app that builds playable games on demand.
 
-The user sees you in a chat panel on the left of the screen. A larger main area
-sits to the right; it is currently a placeholder that the developer will fill in
-later, so don't claim to be able to draw into it yet.
+The user chats with you in a panel on the left. The game you create appears in the
+larger main area on the right, where they play it directly.
 
-Keep responses focused, brief, and concise to avoid overwhelming the person.
-Disclaimers and caveats are brief, with most of the response on the main answer;
-when asked to explain something, give a high-level summary unless an in-depth
-one is specifically requested.
+You can currently build one game: noughts and crosses (tic-tac-toe). Use the
+\`createGame\` tool whenever the user asks for it, however they phrase it —
+"tic tac toe", "noughts and crosses", "Xs and Os", or just "a simple game".
 
-The chat pane is narrow. Prefer short paragraphs and tight lists over wide
-tables or long code blocks.`;
+Call \`createGame\` again to change an existing game: a request like "make the
+computer harder", "let me be O", or "you go first" is a new call with the updated
+settings, not a conversation. Carry over the settings they didn't mention.
+
+Difficulty maps to: 'easy' (random moves), 'medium' (a mix of good and random),
+'perfect' (unbeatable minimax). If someone asks for a hard or unbeatable
+opponent, use 'perfect'.
+
+If they ask for a game you can't build yet, say so plainly in one sentence and
+offer noughts and crosses instead. Don't pretend to build it.
+
+Playing the game is entirely client-side — you are not the referee and won't see
+their moves, so never ask whose turn it is or comment on the score.
+
+Keep replies to a sentence or two. The chat pane is narrow, and the game itself
+is the real output.`;
+
+const tools = {
+  createGame: tool({
+    description:
+      "Create or replace the noughts and crosses game shown in the main area. Also use this to change an existing game's settings.",
+    inputSchema: createGameInputSchema,
+    // Filling in defaults is the whole job — the returned spec is what the
+    // frontend renders, so it must be complete and valid.
+    execute: async (input) => normalizeGameSpec(input),
+  }),
+};
 
 /**
  * The chat agent. `run` is invoked once per conversational turn with the full
@@ -23,6 +47,10 @@ tables or long code blocks.`;
  */
 export const chatAgent = chat.agent({
   id: "chat-agent",
+  // Declared here as well as on streamText so each tool's schema is threaded
+  // into cross-turn history conversion — without this, tool results degrade
+  // from turn 2 onward.
+  tools,
   // Stay warm for 5 minutes between turns so follow-up messages don't pay a
   // cold start. The session outlives the run either way.
   idleTimeoutInSeconds: 300,

@@ -1,63 +1,48 @@
 "use client";
 
-import { useChat } from "@ai-sdk/react";
-import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
-import { isReasoningUIPart, isTextUIPart } from "ai";
 import {
-  useCallback,
+  getToolName,
+  isReasoningUIPart,
+  isTextUIPart,
+  isToolUIPart,
+  type ChatStatus,
+  type UIMessage,
+} from "ai";
+import {
   useEffect,
   useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { mintChatAccessToken, startChatSession } from "@/app/actions";
-// Type-only: erased at build time, so the server-only agent module never
-// reaches the client bundle. It gives the transport a compile-time check on the
-// task id and the message shape.
-import type { chatAgent } from "@/trigger/chat";
 
-export function Chat() {
-  // One chat per page load. Persist this (plus the session state) if you want
-  // conversations to survive a refresh — see the Frontend docs on `resume`.
-  const [chatId] = useState(() => crypto.randomUUID());
+type Props = {
+  messages: UIMessage[];
+  status: ChatStatus;
+  error: Error | undefined;
+  onSend: (text: string) => void;
+  onStop: () => void;
+  onDismissError: () => void;
+};
 
-  const transport = useTriggerChatTransport<typeof chatAgent>({
-    task: "chat-agent",
-    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, clientData }) =>
-      startChatSession({ chatId, clientData }),
-  });
-
-  const {
-    messages,
-    sendMessage,
-    status,
-    error,
-    clearError,
-    stop: aiStop,
-  } = useChat({ id: chatId, transport });
-
+export function ChatPane({
+  messages,
+  status,
+  error,
+  onSend,
+  onStop,
+  onDismissError,
+}: Props) {
   const [input, setInput] = useState("");
   const busy = status === "submitted" || status === "streaming";
 
-  // `useChat`'s own stop() doesn't reach the backend once a stream has been
-  // reconnected, so signal the run directly and then settle the local state.
-  const stop = useCallback(() => {
-    void transport.stopGeneration(chatId);
-    aiStop();
-  }, [transport, chatId, aiStop]);
-
-  const submit = useCallback(
-    (event?: FormEvent) => {
-      event?.preventDefault();
-      const text = input.trim();
-      if (!text || busy) return;
-      setInput("");
-      void sendMessage({ text });
-    },
-    [input, busy, sendMessage],
-  );
+  const submit = (event?: FormEvent) => {
+    event?.preventDefault();
+    const text = input.trim();
+    if (!text || busy) return;
+    setInput("");
+    onSend(text);
+  };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -70,7 +55,7 @@ export function Chat() {
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex shrink-0 items-center gap-2.5 border-b border-border px-5 py-4">
         <StatusDot status={status} />
-        <h1 className="text-sm font-medium tracking-tight">Agent</h1>
+        <h1 className="text-sm font-medium tracking-tight">Game builder</h1>
         <span className="ml-auto font-mono text-[11px] text-muted">
           chat-agent
         </span>
@@ -84,7 +69,7 @@ export function Chat() {
           <p className="mt-1 text-red-300/70">{error.message}</p>
           <button
             type="button"
-            onClick={clearError}
+            onClick={onDismissError}
             className="mt-2 text-red-200 underline decoration-red-400/40 underline-offset-2 hover:decoration-red-300"
           >
             Dismiss
@@ -102,7 +87,7 @@ export function Chat() {
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={onKeyDown}
             rows={2}
-            placeholder="Ask the agent something…"
+            placeholder="Describe a game…"
             className="scrollbar-slim block max-h-40 w-full resize-none bg-transparent px-3.5 py-3 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted/70"
           />
           <div className="flex items-center justify-between gap-2 px-3 pb-2.5">
@@ -112,7 +97,7 @@ export function Chat() {
             {busy ? (
               <button
                 type="button"
-                onClick={stop}
+                onClick={onStop}
                 className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-white/5"
               >
                 Stop
@@ -137,8 +122,8 @@ function MessageList({
   messages,
   status,
 }: {
-  messages: ReturnType<typeof useChat>["messages"];
-  status: ReturnType<typeof useChat>["status"];
+  messages: UIMessage[];
+  status: ChatStatus;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
@@ -147,8 +132,7 @@ function MessageList({
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    pinnedRef.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
   };
 
   useEffect(() => {
@@ -162,12 +146,7 @@ function MessageList({
       onScroll={onScroll}
       className="scrollbar-slim min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5"
     >
-      {messages.length === 0 ? (
-        <p className="pt-6 text-sm leading-relaxed text-muted">
-          This chat runs as a durable Trigger.dev task. Send a message to start
-          the session — it survives refreshes, deploys, and run boundaries.
-        </p>
-      ) : null}
+      {messages.length === 0 ? <Suggestions /> : null}
 
       {messages.map((message) => (
         <Message key={message.id} message={message} />
@@ -180,11 +159,22 @@ function MessageList({
   );
 }
 
-function Message({
-  message,
-}: {
-  message: ReturnType<typeof useChat>["messages"][number];
-}) {
+function Suggestions() {
+  return (
+    <div className="pt-4">
+      <p className="text-sm leading-relaxed text-muted">
+        Ask for a game and it&rsquo;ll appear on the right, ready to play.
+      </p>
+      <ul className="mt-4 space-y-2 text-sm text-foreground/80">
+        <li>&ldquo;Create a simple game like tic tac toe&rdquo;</li>
+        <li>&ldquo;Make the computer unbeatable&rdquo;</li>
+        <li>&ldquo;Let me play as O and you go first&rdquo;</li>
+      </ul>
+    </div>
+  );
+}
+
+function Message({ message }: { message: UIMessage }) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
@@ -228,17 +218,28 @@ function Message({
           );
         }
 
+        if (isToolUIPart(part) && getToolName(part) === "createGame") {
+          const done = part.state === "output-available";
+          return (
+            <div
+              key={i}
+              className="flex items-center gap-2 rounded-lg border border-border bg-surface/60 px-3 py-2 text-xs text-muted"
+            >
+              <span
+                className={`size-1.5 rounded-full ${done ? "bg-accent" : "animate-pulse bg-muted"}`}
+              />
+              {done ? "Built the game →" : "Building the game…"}
+            </div>
+          );
+        }
+
         return null;
       })}
     </div>
   );
 }
 
-function StatusDot({
-  status,
-}: {
-  status: ReturnType<typeof useChat>["status"];
-}) {
+function StatusDot({ status }: { status: ChatStatus }) {
   const tone =
     status === "streaming" || status === "submitted"
       ? "bg-accent"
