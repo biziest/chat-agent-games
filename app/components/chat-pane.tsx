@@ -8,6 +8,7 @@ import {
   type ChatStatus,
   type UIMessage,
 } from "ai";
+import { GAME_TOOL_NAMES } from "@/lib/game";
 import {
   useEffect,
   useRef,
@@ -218,7 +219,7 @@ function Message({ message }: { message: UIMessage }) {
           );
         }
 
-        if (isToolUIPart(part) && getToolName(part) === "createGame") {
+        if (isToolUIPart(part) && GAME_TOOL_NAMES.has(getToolName(part))) {
           const done = part.state === "output-available";
           return (
             <div

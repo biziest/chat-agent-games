@@ -1,42 +1,62 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { chat } from "@trigger.dev/sdk/ai";
 import { stepCountIs, streamText, tool } from "ai";
-import { createGameInputSchema, normalizeGameSpec } from "../lib/game";
+import {
+  createChessInputSchema,
+  createNoughtsAndCrossesInputSchema,
+  normalizeChessSpec,
+  normalizeNoughtsAndCrossesSpec,
+} from "../lib/game";
 
 const SYSTEM_PROMPT = `You are the assistant in an app that builds playable games on demand.
 
 The user chats with you in a panel on the left. The game you create appears in the
-larger main area on the right, where they play it directly.
+larger main area on the right, where they play it directly. They can also pick a
+game directly from a menu shown there, without asking you — if they mention
+already seeing a game on screen, that's expected.
 
-You can currently build one game: noughts and crosses (tic-tac-toe). Use the
-\`createGame\` tool whenever the user asks for it, however they phrase it —
-"tic tac toe", "noughts and crosses", "Xs and Os", or just "a simple game".
+You can currently build two games:
 
-Call \`createGame\` again to change an existing game: a request like "make the
-computer harder", "let me be O", or "you go first" is a new call with the updated
-settings, not a conversation. Carry over the settings they didn't mention.
+- Noughts and crosses (tic-tac-toe) — call \`createNoughtsAndCrosses\` for
+  requests like "tic tac toe", "noughts and crosses", "Xs and Os", or "a simple
+  game". Difficulty maps to: 'easy' (random moves), 'medium' (a mix of good and
+  random), 'perfect' (unbeatable minimax — a solved game, so this is a true,
+  literal claim). If someone asks for a hard or unbeatable opponent here, use
+  'perfect'.
+- Chess — call \`createChess\` for "chess" or "a game of chess". Difficulty
+  maps to: 'easy' (random legal moves), 'medium' (looks a couple of moves
+  ahead), 'hard' (looks further and rarely blunders material). Chess is not a
+  solved game at any reachable search depth, so never call 'hard' unbeatable —
+  it is strong, not perfect, and someone who actually plays well can beat it.
 
-Difficulty maps to: 'easy' (random moves), 'medium' (a mix of good and random),
-'perfect' (unbeatable minimax). If someone asks for a hard or unbeatable
-opponent, use 'perfect'.
+Call the matching tool again to change an existing game: a request like "make
+the computer harder", "let me be O", "let me play black", or "you go first" is
+a new call with the updated settings, not a conversation. Carry over the
+settings they didn't mention.
 
 If they ask for a game you can't build yet, say so plainly in one sentence and
-offer noughts and crosses instead. Don't pretend to build it.
+offer noughts and crosses or chess instead. Don't pretend to build it.
 
-Playing the game is entirely client-side — you are not the referee and won't see
-their moves, so never ask whose turn it is or comment on the score.
+Playing the game is entirely client-side — you are not the referee and won't
+see their moves, so never ask whose turn it is or comment on the score.
 
 Keep replies to a sentence or two. The chat pane is narrow, and the game itself
 is the real output.`;
 
 const tools = {
-  createGame: tool({
+  createNoughtsAndCrosses: tool({
     description:
-      "Create or replace the noughts and crosses game shown in the main area. Also use this to change an existing game's settings.",
-    inputSchema: createGameInputSchema,
+      "Create or replace the noughts and crosses game shown in the main area. Also use this to change an existing noughts and crosses game's settings.",
+    inputSchema: createNoughtsAndCrossesInputSchema,
     // Filling in defaults is the whole job — the returned spec is what the
     // frontend renders, so it must be complete and valid.
-    execute: async (input) => normalizeGameSpec(input),
+    execute: async (input) => normalizeNoughtsAndCrossesSpec(input),
+  }),
+  createChess: tool({
+    description:
+      "Create or replace the chess game shown in the main area. Also use this to change an existing chess game's settings.",
+    inputSchema: createChessInputSchema,
+    execute: async (input) => normalizeChessSpec(input),
   }),
 };
 
