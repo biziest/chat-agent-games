@@ -5,7 +5,6 @@ import { listPublishedGames } from "@/app/actions";
 import { GAME_CATALOG, GENRES, type CatalogGameId, type Genre } from "@/lib/game";
 import type { PublishedGame } from "@/lib/published-games";
 import type { SavedGame } from "@/lib/saved-games";
-import { StarDisplay } from "@/app/components/published-game-board";
 
 type Props = {
   onSelect: (id: CatalogGameId) => void;
@@ -170,13 +169,6 @@ function CommunityList({ onSelect }: { onSelect: (game: PublishedGame) => void }
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium text-foreground">{game.title}</p>
             <span className="text-[11px] text-muted">{game.genre}</span>
-          </div>
-          <div className="mt-1 flex items-center gap-1.5 text-xs text-muted">
-            <StarDisplay value={game.ratingAverage ?? 0} />
-            <span>
-              {game.ratingAverage ? game.ratingAverage.toFixed(1) : "No ratings yet"}
-              {game.ratingCount > 0 ? ` (${game.ratingCount})` : ""}
-            </span>
           </div>
         </button>
       ))}

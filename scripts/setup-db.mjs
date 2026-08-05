@@ -1,7 +1,7 @@
-// Creates the tables the community gallery (published games + reviews)
-// needs. Idempotent — safe to re-run after schema tweaks. Run once after
-// connecting a Postgres database (Vercel Postgres, from the project's
-// Storage tab, is the easiest option):
+// Creates the table the community gallery (published games) needs.
+// Idempotent — safe to re-run after schema tweaks. Run once after
+// connecting a Postgres database (Neon, via the Vercel Marketplace, is the
+// easiest option):
 //
 //   node --env-file=.env scripts/setup-db.mjs
 //
@@ -23,17 +23,4 @@ await sql`
   );
 `;
 
-await sql`
-  CREATE TABLE IF NOT EXISTS game_reviews (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    game_id UUID NOT NULL REFERENCES published_games(id) ON DELETE CASCADE,
-    rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
-    reviewer_name TEXT,
-    comment TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-  );
-`;
-
-await sql`CREATE INDEX IF NOT EXISTS game_reviews_game_id_idx ON game_reviews (game_id);`;
-
-console.log("Database ready: published_games, game_reviews");
+console.log("Database ready: published_games");
