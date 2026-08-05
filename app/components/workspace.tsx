@@ -72,6 +72,10 @@ type WorkspaceState = {
 
 type Transport = ReturnType<typeof useTriggerChatTransport<typeof chatAgent>>;
 
+// How many times to silently retry a transient model-overload error before
+// actually showing it to the player.
+const MAX_AUTO_RETRIES = 2;
+
 function makeChat(transport: Transport): Chat<UIMessage> {
   return new Chat<UIMessage>({ id: crypto.randomUUID(), transport, messages: [] });
 }
@@ -107,8 +111,30 @@ export function Workspace() {
     status,
     error,
     clearError,
+    regenerate,
     stop: aiStop,
   } = useChat({ chat: activeChat });
+
+  // Anthropic's models intermittently return a transient overload (a real
+  // 529 from their API, not a bug here — confirmed by hitting the API
+  // directly during the 2026-08-05 investigation), and chat.agent normalizes
+  // every model-call failure to this same generic text, so matching on it
+  // is the only way to tell "transient, worth retrying" apart from a real
+  // bug. Retries with backoff before ever showing the player an error;
+  // `retryAttempts` resets to 0 whenever the error clears (a fresh chat, or
+  // a successful regenerate), so it doesn't leak across chats or turns.
+  const retryAttempts = useRef(0);
+  const [autoRetrying, setAutoRetrying] = useState(false);
+  useEffect(() => {
+    if (!error) retryAttempts.current = 0;
+    const shouldRetry =
+      error?.message === "An error occurred." && retryAttempts.current < MAX_AUTO_RETRIES;
+    setAutoRetrying(shouldRetry);
+    if (!shouldRetry) return;
+    retryAttempts.current += 1;
+    const timer = setTimeout(() => void regenerate(), retryAttempts.current * 1500);
+    return () => clearTimeout(timer);
+  }, [error, regenerate]);
 
   // The toolCallId of the last create-game call already applied to `state`.
   // Shared across every chat rather than per-session — toolCallIds are
@@ -243,7 +269,8 @@ export function Workspace() {
           key={activeChat.id}
           messages={messages}
           status={status}
-          error={error}
+          error={autoRetrying ? undefined : error}
+          autoRetrying={autoRetrying}
           onSend={(text) => void sendMessage({ text })}
           onStop={stop}
           onDismissError={clearError}

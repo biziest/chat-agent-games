@@ -22,6 +22,11 @@ type Props = {
   messages: UIMessage[];
   status: ChatStatus;
   error: Error | undefined;
+  // True while workspace.tsx is silently retrying a transient model
+  // overload — see the effect in workspace.tsx. Suppresses the error banner
+  // and shows a quieter inline note instead of leaving the pane looking
+  // stuck with no explanation.
+  autoRetrying?: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
   onDismissError: () => void;
@@ -31,6 +36,7 @@ export function ChatPane({
   messages,
   status,
   error,
+  autoRetrying,
   onSend,
   onStop,
   onDismissError,
@@ -64,6 +70,12 @@ export function ChatPane({
       </header>
 
       <MessageList messages={messages} status={status} />
+
+      {autoRetrying ? (
+        <p className="mx-4 mb-3 shrink-0 text-xs text-muted">
+          The model&rsquo;s briefly overloaded — retrying automatically…
+        </p>
+      ) : null}
 
       {error ? (
         <div className="mx-4 mb-3 shrink-0 rounded-lg border border-red-500/25 bg-red-500/8 px-3.5 py-3 text-xs text-red-300">
