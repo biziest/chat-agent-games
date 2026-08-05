@@ -22,24 +22,23 @@ type Props = {
   messages: UIMessage[];
   status: ChatStatus;
   error: Error | undefined;
-  // True while workspace.tsx is silently retrying a transient model
-  // overload — see the effect in workspace.tsx. Suppresses the error banner
-  // and shows a quieter inline note instead of leaving the pane looking
-  // stuck with no explanation.
-  autoRetrying?: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
   onDismissError: () => void;
+  // Regenerates the failed turn — a deliberate, user-initiated action only.
+  // Retrying automatically used to live here (see workspace.tsx's history)
+  // but caused more problems than it solved.
+  onRetry: () => void;
 };
 
 export function ChatPane({
   messages,
   status,
   error,
-  autoRetrying,
   onSend,
   onStop,
   onDismissError,
+  onRetry,
 }: Props) {
   const [input, setInput] = useState("");
   const busy = status === "submitted" || status === "streaming";
@@ -71,23 +70,26 @@ export function ChatPane({
 
       <MessageList messages={messages} status={status} />
 
-      {autoRetrying ? (
-        <p className="mx-4 mb-3 shrink-0 text-xs text-muted">
-          The model&rsquo;s briefly overloaded — retrying automatically…
-        </p>
-      ) : null}
-
       {error ? (
         <div className="mx-4 mb-3 shrink-0 rounded-lg border border-red-500/25 bg-red-500/8 px-3.5 py-3 text-xs text-red-300">
           <p className="font-medium">Something went wrong</p>
           <p className="mt-1 text-red-300/70">{error.message}</p>
-          <button
-            type="button"
-            onClick={onDismissError}
-            className="mt-2 text-red-200 underline decoration-red-400/40 underline-offset-2 hover:decoration-red-300"
-          >
-            Dismiss
-          </button>
+          <div className="mt-2 flex gap-3">
+            <button
+              type="button"
+              onClick={onRetry}
+              className="text-red-200 underline decoration-red-400/40 underline-offset-2 hover:decoration-red-300"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={onDismissError}
+              className="text-red-200 underline decoration-red-400/40 underline-offset-2 hover:decoration-red-300"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       ) : null}
 

@@ -80,10 +80,6 @@ type WorkspaceState = {
 
 type Transport = ReturnType<typeof useTriggerChatTransport<typeof chatAgent>>;
 
-// How many times to silently retry a transient model-overload error before
-// actually showing it to the player.
-const MAX_AUTO_RETRIES = 2;
-
 function makeChat(transport: Transport): Chat<UIMessage> {
   return new Chat<UIMessage>({ id: crypto.randomUUID(), transport, messages: [] });
 }
@@ -185,51 +181,33 @@ export function Workspace() {
 
   // Anthropic's models intermittently return a transient overload (a real
   // 529 from their API, not a bug here — confirmed by hitting the API
-  // directly during the 2026-08-05 investigation), and chat.agent normalizes
-  // every model-call failure to this same generic text, so matching on it
-  // is the only way to tell "transient, worth retrying" apart from a real
-  // bug. Retries with backoff before ever showing the player an error;
-  // `retryAttempts` resets to 0 whenever the error clears (a fresh chat, or
-  // a successful regenerate), so it doesn't leak across chats or turns.
+  // directly during the 2026-08-05 investigation). This used to
+  // auto-retry via `regenerate()` on a timer, but that caused more problems
+  // than it solved — `regenerate()` discards and redoes the entire last
+  // assistant message, which is destructive when the tool call already
+  // succeeded (reads as the game randomly reverting while being edited),
+  // and calling it automatically risked racing an already-recovering
+  // stream, which is the likely cause of a "tool-input-delta for missing
+  // tool call" wire-protocol error seen afterward. Retrying is now a
+  // deliberate, user-initiated action (the "Retry" button in the error
+  // banner) — never automatic.
   //
-  // Crucially, this only *regenerates* when the failing turn hasn't
-  // produced anything yet: `regenerate()` discards and redoes the entire
-  // last assistant message, and an edit routinely succeeds at the tool call
-  // — the game is already correctly updated — before the model's own
-  // trailing wrap-up line hits the same overload on the next step. Calling
-  // `regenerate()` there would throw away that already-correct edit and
-  // have the model redo it from scratch, which reads as the game randomly
-  // reverting or changing while being edited. When that's what happened,
-  // this just quietly clears the error instead — the edit already landed.
-  const retryAttempts = useRef(0);
-  // Guards `clearError()` below to fire at most once per distinct error —
-  // without it, if anything (a lingering transport-level retry, another
-  // effect) keeps re-populating `error` for the same already-succeeded
-  // turn, calling `clearError()` unconditionally on every render would spin
-  // forever: clearError → re-render → error still/again truthy → clearError
-  // → ... — exactly what "Maximum update depth exceeded" reports.
+  // The one thing this still does automatically: if the turn that errored
+  // already has a completed game-creating tool call, the edit landed and
+  // the error is just noise from the model's own trailing wrap-up line —
+  // clear it without bothering the player. Guarded to fire at most once per
+  // distinct error so it can't spin if something keeps re-populating it.
   const clearedForCurrentError = useRef(false);
-  const [autoRetrying, setAutoRetrying] = useState(false);
   useEffect(() => {
     if (!error) {
-      retryAttempts.current = 0;
       clearedForCurrentError.current = false;
+      return;
     }
-    const alreadySucceeded = lastAssistantMessageHasGameToolCall(messages);
-    const shouldRetry =
-      error?.message === "An error occurred." &&
-      retryAttempts.current < MAX_AUTO_RETRIES &&
-      !alreadySucceeded;
-    setAutoRetrying(shouldRetry);
-    if (error && alreadySucceeded && !clearedForCurrentError.current) {
-      clearedForCurrentError.current = true;
-      clearError();
-    }
-    if (!shouldRetry) return;
-    retryAttempts.current += 1;
-    const timer = setTimeout(() => void regenerate(), retryAttempts.current * 1500);
-    return () => clearTimeout(timer);
-  }, [error, regenerate, messages, clearError]);
+    if (clearedForCurrentError.current) return;
+    if (!lastAssistantMessageHasGameToolCall(messages)) return;
+    clearedForCurrentError.current = true;
+    clearError();
+  }, [error, messages, clearError]);
 
   // The toolCallId of the last create-game call already applied to `state`.
   // Shared across every chat rather than per-session — toolCallIds are
@@ -413,11 +391,11 @@ export function Workspace() {
           key={activeChat.id}
           messages={messages}
           status={status}
-          error={autoRetrying ? undefined : error}
-          autoRetrying={autoRetrying}
+          error={error}
           onSend={(text) => void sendMessage({ text })}
           onStop={stop}
           onDismissError={clearError}
+          onRetry={() => void regenerate()}
         />
       </aside>
 
@@ -498,12 +476,9 @@ function applyToolCall(
 
 /**
  * Whether the last message already contains a completed game-creating tool
- * call — used to decide whether an "An error occurred" on this turn is safe
- * to auto-retry via `regenerate()`. `regenerate()` discards and redoes the
- * entire last assistant message, so retrying after the tool call already
- * succeeded (the error being on the model's own trailing wrap-up line
- * instead) would throw away a correct edit and have the model redo it from
- * scratch — see the comment where this is used.
+ * call — used to tell "the edit already landed, this error is just noise
+ * from the model's trailing wrap-up line" apart from a genuine failure, so
+ * the harmless kind can be cleared without bothering the player.
  */
 function lastAssistantMessageHasGameToolCall(messages: UIMessage[]): boolean {
   const last = messages.at(-1);
