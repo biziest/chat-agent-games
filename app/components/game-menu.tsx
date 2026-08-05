@@ -1,14 +1,18 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { listPublishedGames } from "@/app/actions";
 import { GAME_CATALOG, GENRES, type CatalogGameId, type Genre } from "@/lib/game";
+import type { PublishedGame } from "@/lib/published-games";
 import type { SavedGame } from "@/lib/saved-games";
+import { StarDisplay } from "@/app/components/published-game-board";
 
 type Props = {
   onSelect: (id: CatalogGameId) => void;
   savedGames: SavedGame[];
   onLaunchSaved: (saved: SavedGame) => void;
   onRemoveSaved: (id: string) => void;
+  onSelectPublished: (game: PublishedGame) => void;
 };
 
 /**
@@ -18,14 +22,20 @@ type Props = {
  * a saved game replays its stored spec the same way. Anything else (a
  * specific difficulty, or a game not on this list at all) goes through chat —
  * see `createCustomGame` in trigger/chat.ts for how it gets its genre.
+ *
+ * A second tab lists what anyone has published to the shared gallery — see
+ * lib/published-games.ts and app/actions.ts — separate from "My Games"
+ * since it's the one place in this app showing data from other visitors.
  */
 export function GameMenu({
   onSelect,
   savedGames,
   onLaunchSaved,
   onRemoveSaved,
+  onSelectPublished,
 }: Props) {
   const [pendingDelete, setPendingDelete] = useState<SavedGame | null>(null);
+  const [tab, setTab] = useState<"mine" | "community">("mine");
 
   const folders = GENRES.map((genre) => ({
     genre,
@@ -52,19 +62,32 @@ export function GameMenu({
           </p>
         </div>
 
-        <div className="space-y-2">
-          {folders.map((folder) => (
-            <GenreFolder
-              key={folder.genre}
-              genre={folder.genre}
-              catalogEntries={folder.catalogEntries}
-              savedEntries={folder.savedEntries}
-              onSelect={onSelect}
-              onLaunchSaved={onLaunchSaved}
-              onRequestRemove={setPendingDelete}
-            />
-          ))}
+        <div className="mb-4 flex gap-1 rounded-lg border border-border bg-surface p-1">
+          <TabButton active={tab === "mine"} onClick={() => setTab("mine")}>
+            My games
+          </TabButton>
+          <TabButton active={tab === "community"} onClick={() => setTab("community")}>
+            🌐 Community
+          </TabButton>
         </div>
+
+        {tab === "mine" ? (
+          <div className="space-y-2">
+            {folders.map((folder) => (
+              <GenreFolder
+                key={folder.genre}
+                genre={folder.genre}
+                catalogEntries={folder.catalogEntries}
+                savedEntries={folder.savedEntries}
+                onSelect={onSelect}
+                onLaunchSaved={onLaunchSaved}
+                onRequestRemove={setPendingDelete}
+              />
+            ))}
+          </div>
+        ) : (
+          <CommunityList onSelect={onSelectPublished} />
+        )}
       </div>
 
       {pendingDelete ? (
@@ -77,6 +100,86 @@ export function GameMenu({
           }}
         />
       ) : null}
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+        active ? "bg-surface-raised text-foreground" : "text-muted hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function CommunityList({ onSelect }: { onSelect: (game: PublishedGame) => void }) {
+  const [games, setGames] = useState<PublishedGame[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    listPublishedGames()
+      .then((fetched) => {
+        if (!cancelled) setGames(fetched);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (failed) {
+    return <p className="text-center text-sm text-muted">Couldn&rsquo;t load published games.</p>;
+  }
+  if (!games) {
+    return <p className="text-center text-sm text-muted">Loading…</p>;
+  }
+  if (games.length === 0) {
+    return (
+      <p className="text-center text-sm text-muted">
+        Nobody&rsquo;s published a game yet — build one and be the first.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {games.map((game) => (
+        <button
+          key={game.id}
+          type="button"
+          onClick={() => onSelect(game)}
+          className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-left transition-colors hover:border-accent/40 hover:bg-surface-raised"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium text-foreground">{game.title}</p>
+            <span className="text-[11px] text-muted">{game.genre}</span>
+          </div>
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+            <StarDisplay value={game.ratingAverage ?? 0} />
+            <span>
+              {game.ratingAverage ? game.ratingAverage.toFixed(1) : "No ratings yet"}
+              {game.ratingCount > 0 ? ` (${game.ratingCount})` : ""}
+            </span>
+          </div>
+        </button>
+      ))}
     </div>
   );
 }

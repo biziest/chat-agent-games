@@ -24,6 +24,7 @@ import {
   type PersistedSession,
 } from "@/lib/active-session-storage";
 import { FLUSH_PROGRESS_WAIT_MS, REQUEST_PROGRESS_MESSAGE_TYPE } from "@/lib/custom-game-protocol";
+import type { PublishedGame } from "@/lib/published-games";
 import { buildResumeMessageText } from "@/lib/resume-message";
 import {
   getSavedGamesServerSnapshot,
@@ -130,6 +131,11 @@ export function Workspace() {
   // just lets the game fill the screen; the chat and its history keep
   // running underneath, untouched.
   const [chatCollapsed, setChatCollapsed] = useState(false);
+
+  // A game picked from the shared community gallery — mutually exclusive
+  // with an active session (see game-pane.tsx): read-only, no dedicated
+  // chat behind it, so it doesn't fit the GameSession model at all.
+  const [viewingPublishedGame, setViewingPublishedGame] = useState<PublishedGame | null>(null);
 
   // Restores whatever game was on screen when the page was last reloaded —
   // see lib/active-session-storage.ts. `useSyncExternalStore` (not a
@@ -327,7 +333,21 @@ export function Workspace() {
   const handleExitGame = useCallback(async () => {
     await flushActiveProgress();
     setState((prev) => ({ ...prev, activeSessionId: null }));
+    setViewingPublishedGame(null);
   }, [flushActiveProgress]);
+
+  // Browsing the community gallery leaves whatever game was active the same
+  // way exiting to the menu would (flushing its progress first) — the chat
+  // pane is untouched either way, since a published game has no dedicated
+  // chat of its own to switch to.
+  const handleSelectPublished = useCallback(
+    async (published: PublishedGame) => {
+      await flushActiveProgress();
+      setState((prev) => ({ ...prev, activeSessionId: null }));
+      setViewingPublishedGame(published);
+    },
+    [flushActiveProgress],
+  );
 
   // Saved custom games: kept in localStorage, not a database — this app has
   // no accounts, so "remember this on my device" is the right scope.
@@ -421,9 +441,11 @@ export function Workspace() {
         {/* Keying on the game id resets board state whenever the agent
             builds/changes the game, or the user picks a new one from the menu. */}
         <GamePane
-          key={game?.id ?? "menu"}
+          key={viewingPublishedGame ? `published-${viewingPublishedGame.id}` : (game?.id ?? "menu")}
           game={game}
+          viewingPublishedGame={viewingPublishedGame}
           onSelectGame={handleSelectGame}
+          onSelectPublished={(published) => void handleSelectPublished(published)}
           onExitGame={handleExitGame}
           savedGames={savedGames}
           onLaunchSavedGame={handleLaunchSavedGame}

@@ -1,43 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { publishGame } from "@/app/actions";
 import type { CustomGameSpec } from "@/lib/game";
 import { PROGRESS_MESSAGE_TYPE } from "@/lib/custom-game-protocol";
-
-// Fetched once and reused for every custom game shown this session — the
-// bundle (see scripts/bundle-three.mjs) is a static asset, not something that
-// changes per game, so there's no reason to refetch it on every switch.
-let threeSourcePromise: Promise<string> | null = null;
-function loadThreeSource(): Promise<string> {
-  threeSourcePromise ??= fetch("/vendor/three.min.js").then((res) => res.text());
-  return threeSourcePromise;
-}
-
-/** Escapes `<` so a JSON value can't break out of its enclosing <script> tag. */
-function embedJson(value: unknown): string {
-  return JSON.stringify(value ?? null).replace(/</g, "\\u003c");
-}
-
-/**
- * Builds the final iframe document: a small runtime script inlined first —
- * the vendored three.js bundle (so a global `THREE` exists before the
- * model's own script runs) plus `window.__initialProgress` (the resume state
- * from a previous visit, or `null` for a fresh game; see the system prompt in
- * trigger/chat.ts for the save/restore contract the model's script follows)
- * — then the model-authored page unchanged. Done here at render time rather
- * than baked into the stored spec, so neither the three.js bundle nor a
- * game's progress touches conversation history or the saved-games
- * localStorage entry itself — see lib/saved-games.ts.
- */
-function buildSrcDoc(html: string, threeSource: string, initialProgress: unknown): string {
-  const script = `<script>window.__initialProgress=${embedJson(initialProgress)};${threeSource}</script>`;
-  const headMatch = /<head[^>]*>/i.exec(html);
-  if (headMatch) {
-    const index = headMatch.index + headMatch[0].length;
-    return html.slice(0, index) + script + html.slice(index);
-  }
-  return script + html;
-}
+import { buildGameSrcDoc, loadThreeSource } from "@/lib/three-runtime";
 
 /**
  * Renders an arbitrary, agent-authored game. Unlike the curated games, there's
@@ -68,6 +35,9 @@ export function CustomGameBoard({
 }) {
   const [saved, setSaved] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [publishState, setPublishState] = useState<"idle" | "publishing" | "published" | "error">(
+    "idle",
+  );
   const [threeSource, setThreeSource] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -124,6 +94,20 @@ export function CustomGameBoard({
     setSaved(true);
   };
 
+  // Calls the server action directly rather than threading a prop through
+  // game-pane.tsx/workspace.tsx — publishing is a network call with its own
+  // loading/error states this component already needs to own, and Next.js
+  // server actions are safe to call straight from a client component.
+  const handlePublish = async () => {
+    setPublishState("publishing");
+    try {
+      await publishGame({ title: game.title, genre: game.genre, html: game.html });
+      setPublishState("published");
+    } catch {
+      setPublishState("error");
+    }
+  };
+
   // A rough but reliable signal: the only way this HTML could restore state
   // is by reading `window.__initialProgress`, so if that string isn't in
   // there at all, this game predates the save/restore contract in
@@ -175,11 +159,29 @@ export function CustomGameBoard({
         </div>
       ) : null}
 
+      <div className="flex items-center justify-center gap-3 text-sm">
+        {publishState === "published" ? (
+          <span className="text-accent">Published — everyone can play it ✓</span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void handlePublish()}
+            disabled={publishState === "publishing"}
+            className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {publishState === "publishing" ? "Publishing…" : "🌐 Publish for everyone"}
+          </button>
+        )}
+        {publishState === "error" ? (
+          <span className="text-xs text-red-300">Couldn&rsquo;t publish — try again.</span>
+        ) : null}
+      </div>
+
       {threeSource ? (
         <iframe
           ref={iframeRef}
           title={game.title}
-          srcDoc={buildSrcDoc(game.html, threeSource, capturedProgress)}
+          srcDoc={buildGameSrcDoc(game.html, threeSource, capturedProgress)}
           sandbox="allow-scripts"
           className="min-h-0 flex-1 rounded-xl border border-border"
         />

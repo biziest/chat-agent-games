@@ -4,14 +4,22 @@ import { ChessBoard } from "@/app/components/chess-board";
 import { CustomGameBoard } from "@/app/components/custom-game-board";
 import { GameMenu } from "@/app/components/game-menu";
 import { NoughtsAndCrossesBoard } from "@/app/components/noughts-and-crosses-board";
+import { PublishedGameBoard } from "@/app/components/published-game-board";
 import type { CatalogGameId, CustomGameSpec, GameSpec } from "@/lib/game";
+import type { PublishedGame } from "@/lib/published-games";
 import type { SavedGame } from "@/lib/saved-games";
 
 type ActiveGame = { id: string; spec: GameSpec; origin: "chat" | "menu" };
 
 type Props = {
   game: ActiveGame | null;
+  // A game picked from the shared gallery (see lib/published-games.ts) —
+  // mutually exclusive with `game`: read-only, no dedicated chat, no
+  // progress persistence, so it's a separate concept rather than another
+  // `origin` on `ActiveGame`.
+  viewingPublishedGame: PublishedGame | null;
   onSelectGame: (id: CatalogGameId) => void;
+  onSelectPublished: (game: PublishedGame) => void;
   onExitGame: () => void;
   savedGames: SavedGame[];
   onLaunchSavedGame: (saved: SavedGame) => void;
@@ -24,7 +32,9 @@ type Props = {
 
 export function GamePane({
   game,
+  viewingPublishedGame,
   onSelectGame,
+  onSelectPublished,
   onExitGame,
   savedGames,
   onLaunchSavedGame,
@@ -34,6 +44,15 @@ export function GamePane({
   onProgressChange,
   onIframeWindowChange,
 }: Props) {
+  if (viewingPublishedGame) {
+    return (
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <ExitButton onClick={onExitGame} />
+        <PublishedGameBoard game={viewingPublishedGame} />
+      </div>
+    );
+  }
+
   if (!game) {
     return (
       <GameMenu
@@ -41,19 +60,14 @@ export function GamePane({
         savedGames={savedGames}
         onLaunchSaved={onLaunchSavedGame}
         onRemoveSaved={onRemoveSavedGame}
+        onSelectPublished={onSelectPublished}
       />
     );
   }
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <button
-        type="button"
-        onClick={onExitGame}
-        className="absolute top-5 left-5 z-10 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-muted transition-colors hover:bg-surface-raised hover:text-foreground"
-      >
-        ← Games
-      </button>
+      <ExitButton onClick={onExitGame} />
       <Board
         game={game}
         onSaveGame={onSaveGame}
@@ -62,6 +76,18 @@ export function GamePane({
         onIframeWindowChange={onIframeWindowChange}
       />
     </div>
+  );
+}
+
+function ExitButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="absolute top-5 left-5 z-10 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-muted transition-colors hover:bg-surface-raised hover:text-foreground"
+    >
+      ← Games
+    </button>
   );
 }
 

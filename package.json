@@ -8,18 +8,21 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test \"lib/**/*.test.mts\"",
-    "bundle:three": "node scripts/bundle-three.mjs"
+    "bundle:three": "node scripts/bundle-three.mjs",
+    "setup:db": "node --env-file=.env scripts/setup-db.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.27",
     "@ai-sdk/otel": "^1.0.48",
     "@ai-sdk/react": "^4.0.51",
     "@trigger.dev/sdk": "^4.5.9",
+    "@vercel/postgres": "^0.10.0",
     "ai": "^7.0.48",
     "chess.js": "^1.4.0",
     "next": "16.2.12",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "server-only": "^0.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
