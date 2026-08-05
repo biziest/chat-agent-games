@@ -29,6 +29,9 @@ type Props = {
   // Retrying automatically used to live here (see workspace.tsx's history)
   // but caused more problems than it solved.
   onRetry: () => void;
+  // Hides this pane so the game can fill the screen — see workspace.tsx,
+  // which keeps the chat and its history running regardless.
+  onCollapse: () => void;
 };
 
 export function ChatPane({
@@ -39,6 +42,7 @@ export function ChatPane({
   onStop,
   onDismissError,
   onRetry,
+  onCollapse,
 }: Props) {
   const [input, setInput] = useState("");
   const busy = status === "submitted" || status === "streaming";
@@ -66,6 +70,15 @@ export function ChatPane({
         <span className="ml-auto font-mono text-[11px] text-muted">
           chat-agent
         </span>
+        <button
+          type="button"
+          onClick={onCollapse}
+          aria-label="Collapse chat"
+          title="Collapse chat"
+          className="rounded-lg border border-border px-2 py-1 text-xs text-muted transition-colors hover:bg-white/5 hover:text-foreground"
+        >
+          «
+        </button>
       </header>
 
       <MessageList messages={messages} status={status} />

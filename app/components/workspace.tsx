@@ -126,6 +126,11 @@ export function Workspace() {
   const activeSession = activeSessionId ? (sessions.get(activeSessionId) ?? null) : null;
   const activeChat = activeSession?.chat ?? lobbyChat;
 
+  // Purely a layout toggle, not tied to any game/chat state — collapsing
+  // just lets the game fill the screen; the chat and its history keep
+  // running underneath, untouched.
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+
   // Restores whatever game was on screen when the page was last reloaded —
   // see lib/active-session-storage.ts. `useSyncExternalStore` (not a
   // `useState` initializer, not a `useEffect`) is what makes this safe:
@@ -386,20 +391,32 @@ export function Workspace() {
 
   return (
     <div className="flex h-dvh w-full overflow-hidden">
-      <aside className="flex h-full w-1/3 min-w-0 flex-col border-r border-border bg-surface">
-        <ChatPane
-          key={activeChat.id}
-          messages={messages}
-          status={status}
-          error={error}
-          onSend={(text) => void sendMessage({ text })}
-          onStop={stop}
-          onDismissError={clearError}
-          onRetry={() => void regenerate()}
-        />
-      </aside>
+      {!chatCollapsed ? (
+        <aside className="flex h-full w-1/3 min-w-0 flex-col border-r border-border bg-surface">
+          <ChatPane
+            key={activeChat.id}
+            messages={messages}
+            status={status}
+            error={error}
+            onSend={(text) => void sendMessage({ text })}
+            onStop={stop}
+            onDismissError={clearError}
+            onRetry={() => void regenerate()}
+            onCollapse={() => setChatCollapsed(true)}
+          />
+        </aside>
+      ) : null}
 
-      <main className="flex h-full min-w-0 flex-1 flex-col bg-background">
+      <main className="relative flex h-full min-w-0 flex-1 flex-col bg-background">
+        {chatCollapsed ? (
+          <button
+            type="button"
+            onClick={() => setChatCollapsed(false)}
+            className="absolute top-5 right-5 z-20 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-muted transition-colors hover:bg-surface-raised hover:text-foreground"
+          >
+            Chat »
+          </button>
+        ) : null}
         {/* Keying on the game id resets board state whenever the agent
             builds/changes the game, or the user picks a new one from the menu. */}
         <GamePane
