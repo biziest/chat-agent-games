@@ -403,6 +403,7 @@ export function Workspace() {
             onDismissError={clearError}
             onRetry={() => void regenerate()}
             onCollapse={() => setChatCollapsed(true)}
+            hasActiveGame={game !== null}
           />
         </aside>
       ) : null}

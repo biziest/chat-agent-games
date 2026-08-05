@@ -16,7 +16,24 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
+
+// Shown above the input once a game exists — one tap sends a common edit
+// request instead of typing it out. Deliberately generic (not per-genre):
+// they read sensibly for any game, curated or custom.
+const QUICK_EDITS = [
+  "Make it harder",
+  "Change the color scheme",
+  "Add sound effects",
+  "Make it faster-paced",
+];
+
+const STARTER_PROMPTS = [
+  "Create a simple game like tic tac toe",
+  "Make me a game where I dodge falling blocks",
+  "A memory-matching card game with a timer",
+];
 
 type Props = {
   messages: UIMessage[];
@@ -32,6 +49,9 @@ type Props = {
   // Hides this pane so the game can fill the screen — see workspace.tsx,
   // which keeps the chat and its history running regardless.
   onCollapse: () => void;
+  // Whether a game is currently on screen — swaps the starter prompts for
+  // quick-edit chips relevant to something that already exists.
+  hasActiveGame: boolean;
 };
 
 export function ChatPane({
@@ -43,16 +63,18 @@ export function ChatPane({
   onDismissError,
   onRetry,
   onCollapse,
+  hasActiveGame,
 }: Props) {
   const [input, setInput] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const busy = status === "submitted" || status === "streaming";
 
-  const submit = (event?: FormEvent) => {
+  const submit = (event?: FormEvent, text = input) => {
     event?.preventDefault();
-    const text = input.trim();
-    if (!text || busy) return;
+    const trimmed = text.trim();
+    if (!trimmed || busy) return;
     setInput("");
-    onSend(text);
+    onSend(trimmed);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -60,6 +82,15 @@ export function ChatPane({
       event.preventDefault();
       submit();
     }
+  };
+
+  // Grows with content up to the CSS max-height (then scrolls) — reset to
+  // "auto" first so shrinking (e.g. after sending) recalculates correctly
+  // instead of only ever growing.
+  const onInput = (event: FormEvent<HTMLTextAreaElement>) => {
+    const el = event.currentTarget;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
   };
 
   return (
@@ -81,7 +112,7 @@ export function ChatPane({
         </button>
       </header>
 
-      <MessageList messages={messages} status={status} />
+      <MessageList messages={messages} status={status} onSuggestion={(text) => submit(undefined, text)} />
 
       {error ? (
         <div className="mx-4 mb-3 shrink-0 rounded-lg border border-red-500/25 bg-red-500/8 px-3.5 py-3 text-xs text-red-300">
@@ -110,10 +141,27 @@ export function ChatPane({
         onSubmit={submit}
         className="shrink-0 border-t border-border bg-surface p-4"
       >
+        {hasActiveGame && !busy ? (
+          <div className="scrollbar-slim mb-2.5 flex gap-1.5 overflow-x-auto pb-1">
+            {QUICK_EDITS.map((text) => (
+              <button
+                key={text}
+                type="button"
+                onClick={() => submit(undefined, text)}
+                className="shrink-0 rounded-full border border-border bg-surface-raised px-3 py-1 text-xs text-muted transition-colors hover:border-accent/40 hover:text-foreground"
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         <div className="rounded-xl border border-border bg-surface-raised transition-colors focus-within:border-accent/40">
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
+            onInput={onInput}
             onKeyDown={onKeyDown}
             rows={2}
             placeholder="Describe a game…"
@@ -150,18 +198,26 @@ export function ChatPane({
 function MessageList({
   messages,
   status,
+  onSuggestion,
 }: {
   messages: UIMessage[];
   status: ChatStatus;
+  onSuggestion: (text: string) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 
-  // Follow the stream, but stop fighting the user once they scroll away.
+  // Follow the stream, but stop fighting the user once they scroll away —
+  // and surface a "jump to latest" button while they're away from the
+  // bottom, since a long streaming reply can otherwise scroll on without
+  // them noticing.
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    const pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    pinnedRef.current = pinned;
+    setShowJumpToLatest(!pinned);
   };
 
   useEffect(() => {
@@ -169,38 +225,84 @@ function MessageList({
     if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
   }, [messages, status]);
 
+  const jumpToLatest = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    pinnedRef.current = true;
+    setShowJumpToLatest(false);
+  };
+
   return (
-    <div
-      ref={scrollRef}
-      onScroll={onScroll}
-      className="scrollbar-slim min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5"
-    >
-      {messages.length === 0 ? <Suggestions /> : null}
+    <div className="relative min-h-0 flex-1">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="scrollbar-slim h-full space-y-5 overflow-y-auto px-5 py-5"
+      >
+        {messages.length === 0 ? <Suggestions onPick={onSuggestion} /> : null}
 
-      {messages.map((message) => (
-        <Message key={message.id} message={message} />
-      ))}
+        {messages.map((message) => (
+          <Message key={message.id} message={message} />
+        ))}
 
-      {status === "submitted" ? (
-        <p className="text-xs text-muted">Waking the agent…</p>
+        {status === "submitted" ? <TypingIndicator /> : null}
+      </div>
+
+      {showJumpToLatest ? (
+        <button
+          type="button"
+          onClick={jumpToLatest}
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface-raised px-3 py-1 text-[11px] text-muted shadow-lg transition-colors hover:text-foreground"
+        >
+          ↓ Jump to latest
+        </button>
       ) : null}
     </div>
   );
 }
 
-function Suggestions() {
+function Suggestions({ onPick }: { onPick: (text: string) => void }) {
   return (
-    <div className="pt-4">
+    <div className="animate-message-in pt-4">
       <p className="text-sm leading-relaxed text-muted">
         Describe any game — it&rsquo;ll appear on the right, playable, no
         code or new tab needed.
       </p>
-      <ul className="mt-4 space-y-2 text-sm text-foreground/80">
-        <li>&ldquo;Create a simple game like tic tac toe&rdquo;</li>
-        <li>&ldquo;Make me a game where I dodge falling blocks&rdquo;</li>
-        <li>&ldquo;A memory-matching card game with a timer&rdquo;</li>
-      </ul>
+      <div className="mt-4 flex flex-col gap-2">
+        {STARTER_PROMPTS.map((text) => (
+          <button
+            key={text}
+            type="button"
+            onClick={() => onPick(text)}
+            className="rounded-lg border border-border bg-surface px-3.5 py-2.5 text-left text-sm text-foreground/80 transition-colors hover:border-accent/40 hover:bg-surface-raised hover:text-foreground"
+          >
+            &ldquo;{text}&rdquo;
+          </button>
+        ))}
+      </div>
     </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div className="animate-message-in flex items-center gap-2">
+      <Avatar />
+      <div className="flex items-center gap-1 rounded-2xl rounded-bl-md border border-border bg-surface-raised px-3.5 py-3">
+        <span className="animate-typing-dot size-1.5 rounded-full bg-muted [animation-delay:0ms]" />
+        <span className="animate-typing-dot size-1.5 rounded-full bg-muted [animation-delay:150ms]" />
+        <span className="animate-typing-dot size-1.5 rounded-full bg-muted [animation-delay:300ms]" />
+      </div>
+    </div>
+  );
+}
+
+function Avatar() {
+  return (
+    <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-accent/30 bg-accent/10 text-xs">
+      ✦
+    </span>
   );
 }
 
@@ -214,7 +316,7 @@ function Message({ message }: { message: UIMessage }) {
     const resume = parseResumeMessageText(resumeText);
     if (resume) {
       return (
-        <div className="flex justify-center">
+        <div className="animate-message-in flex justify-center">
           <span className="rounded-full border border-border bg-surface px-3 py-1 text-[11px] text-muted">
             ↻ Resumed {resume.label}
           </span>
@@ -223,7 +325,7 @@ function Message({ message }: { message: UIMessage }) {
     }
 
     return (
-      <div className="flex justify-end">
+      <div className="animate-message-in flex justify-end">
         <div className="max-w-[85%] rounded-2xl rounded-br-md border border-border bg-surface-raised px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
           {message.parts.filter(isTextUIPart).map((part, i) => (
             <span key={i}>{part.text}</span>
@@ -234,55 +336,101 @@ function Message({ message }: { message: UIMessage }) {
   }
 
   return (
-    <div className="space-y-2.5">
-      {message.parts.map((part, i) => {
-        if (isReasoningUIPart(part)) {
-          if (!part.text) return null;
-          return (
-            <details
-              key={i}
-              className="rounded-lg border border-border bg-surface/60 px-3 py-2"
-            >
-              <summary className="cursor-pointer text-[11px] font-medium tracking-wide text-muted uppercase">
-                Thinking
-              </summary>
-              <div className="mt-2 text-xs leading-relaxed whitespace-pre-wrap text-muted">
-                {part.text}
+    <div className="animate-message-in flex items-start gap-2">
+      <Avatar />
+      <div className="min-w-0 flex-1 space-y-2.5">
+        {message.parts.map((part, i) => {
+          if (isReasoningUIPart(part)) {
+            if (!part.text) return null;
+            return (
+              <details
+                key={i}
+                className="rounded-lg border border-border bg-surface/60 px-3 py-2"
+              >
+                <summary className="cursor-pointer text-[11px] font-medium tracking-wide text-muted uppercase">
+                  Thinking
+                </summary>
+                <div className="mt-2 text-xs leading-relaxed whitespace-pre-wrap text-muted">
+                  {part.text}
+                </div>
+              </details>
+            );
+          }
+
+          if (isTextUIPart(part)) {
+            return (
+              <div
+                key={i}
+                className="rounded-2xl rounded-bl-md border border-border bg-surface-raised px-3.5 py-2.5 text-sm leading-relaxed text-foreground"
+              >
+                {renderInlineMarkdown(part.text)}
               </div>
-            </details>
-          );
-        }
+            );
+          }
 
-        if (isTextUIPart(part)) {
-          return (
-            <div
-              key={i}
-              className="text-sm leading-relaxed whitespace-pre-wrap text-foreground"
-            >
-              {part.text}
-            </div>
-          );
-        }
+          if (isToolUIPart(part) && GAME_TOOL_NAMES.has(getToolName(part))) {
+            const done = part.state === "output-available";
+            return (
+              <div
+                key={i}
+                className="flex items-center gap-2 rounded-lg border border-border bg-surface/60 px-3 py-2 text-xs text-muted"
+              >
+                <span
+                  className={`size-1.5 rounded-full ${done ? "bg-accent" : "animate-pulse bg-muted"}`}
+                />
+                {done ? "Built the game →" : "Building the game…"}
+              </div>
+            );
+          }
 
-        if (isToolUIPart(part) && GAME_TOOL_NAMES.has(getToolName(part))) {
-          const done = part.state === "output-available";
-          return (
-            <div
-              key={i}
-              className="flex items-center gap-2 rounded-lg border border-border bg-surface/60 px-3 py-2 text-xs text-muted"
-            >
-              <span
-                className={`size-1.5 rounded-full ${done ? "bg-accent" : "animate-pulse bg-muted"}`}
-              />
-              {done ? "Built the game →" : "Building the game…"}
-            </div>
-          );
-        }
-
-        return null;
-      })}
+          return null;
+        })}
+      </div>
     </div>
   );
+}
+
+/**
+ * A small, safe subset of markdown — bold, inline code, and fenced code
+ * blocks — rendered as real React elements (never `dangerouslySetInnerHTML`,
+ * so there's no injection risk from anything the model writes). The system
+ * prompt asks for terse replies, so this is about the occasional `variable
+ * name` or **emphasis**, not full document rendering.
+ */
+function renderInlineMarkdown(text: string): ReactNode {
+  const blocks = text.split(/(```[\s\S]*?```)/g);
+  return blocks.map((block, blockIndex) => {
+    if (block.startsWith("```")) {
+      const code = block.replace(/^```[^\n]*\n?/, "").replace(/```$/, "");
+      return (
+        <pre
+          key={blockIndex}
+          className="scrollbar-slim my-1.5 overflow-x-auto rounded-lg bg-black/30 px-3 py-2 font-mono text-xs"
+        >
+          <code>{code}</code>
+        </pre>
+      );
+    }
+
+    const segments = block.split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/g);
+    return (
+      <span key={blockIndex} className="whitespace-pre-wrap">
+        {segments.map((segment, i) => {
+          if (segment.startsWith("**") && segment.endsWith("**")) {
+            return <strong key={i}>{segment.slice(2, -2)}</strong>;
+          }
+          if (segment.startsWith("`") && segment.endsWith("`")) {
+            return (
+              <code key={i} className="rounded bg-white/10 px-1 py-0.5 font-mono text-[0.85em]">
+                {segment.slice(1, -1)}
+              </code>
+            );
+          }
+          return <span key={i}>{segment}</span>;
+        })}
+      </span>
+    );
+  });
 }
 
 function StatusDot({ status }: { status: ChatStatus }) {

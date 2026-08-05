@@ -55,3 +55,37 @@ body {
     border-radius: 9999px;
   }
 }
+
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes typing-dot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+@layer utilities {
+  .animate-message-in {
+    animation: message-in 0.18s ease-out;
+  }
+
+  .animate-typing-dot {
+    animation: typing-dot 1.1s ease-in-out infinite;
+  }
+}
