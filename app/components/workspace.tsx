@@ -202,16 +202,29 @@ export function Workspace() {
   // reverting or changing while being edited. When that's what happened,
   // this just quietly clears the error instead — the edit already landed.
   const retryAttempts = useRef(0);
+  // Guards `clearError()` below to fire at most once per distinct error —
+  // without it, if anything (a lingering transport-level retry, another
+  // effect) keeps re-populating `error` for the same already-succeeded
+  // turn, calling `clearError()` unconditionally on every render would spin
+  // forever: clearError → re-render → error still/again truthy → clearError
+  // → ... — exactly what "Maximum update depth exceeded" reports.
+  const clearedForCurrentError = useRef(false);
   const [autoRetrying, setAutoRetrying] = useState(false);
   useEffect(() => {
-    if (!error) retryAttempts.current = 0;
+    if (!error) {
+      retryAttempts.current = 0;
+      clearedForCurrentError.current = false;
+    }
     const alreadySucceeded = lastAssistantMessageHasGameToolCall(messages);
     const shouldRetry =
       error?.message === "An error occurred." &&
       retryAttempts.current < MAX_AUTO_RETRIES &&
       !alreadySucceeded;
     setAutoRetrying(shouldRetry);
-    if (error && alreadySucceeded) clearError();
+    if (error && alreadySucceeded && !clearedForCurrentError.current) {
+      clearedForCurrentError.current = true;
+      clearError();
+    }
     if (!shouldRetry) return;
     retryAttempts.current += 1;
     const timer = setTimeout(() => void regenerate(), retryAttempts.current * 1500);
