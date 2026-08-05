@@ -191,18 +191,32 @@ export function Workspace() {
   // bug. Retries with backoff before ever showing the player an error;
   // `retryAttempts` resets to 0 whenever the error clears (a fresh chat, or
   // a successful regenerate), so it doesn't leak across chats or turns.
+  //
+  // Crucially, this only *regenerates* when the failing turn hasn't
+  // produced anything yet: `regenerate()` discards and redoes the entire
+  // last assistant message, and an edit routinely succeeds at the tool call
+  // — the game is already correctly updated — before the model's own
+  // trailing wrap-up line hits the same overload on the next step. Calling
+  // `regenerate()` there would throw away that already-correct edit and
+  // have the model redo it from scratch, which reads as the game randomly
+  // reverting or changing while being edited. When that's what happened,
+  // this just quietly clears the error instead — the edit already landed.
   const retryAttempts = useRef(0);
   const [autoRetrying, setAutoRetrying] = useState(false);
   useEffect(() => {
     if (!error) retryAttempts.current = 0;
+    const alreadySucceeded = lastAssistantMessageHasGameToolCall(messages);
     const shouldRetry =
-      error?.message === "An error occurred." && retryAttempts.current < MAX_AUTO_RETRIES;
+      error?.message === "An error occurred." &&
+      retryAttempts.current < MAX_AUTO_RETRIES &&
+      !alreadySucceeded;
     setAutoRetrying(shouldRetry);
+    if (error && alreadySucceeded) clearError();
     if (!shouldRetry) return;
     retryAttempts.current += 1;
     const timer = setTimeout(() => void regenerate(), retryAttempts.current * 1500);
     return () => clearTimeout(timer);
-  }, [error, regenerate]);
+  }, [error, regenerate, messages, clearError]);
 
   // The toolCallId of the last create-game call already applied to `state`.
   // Shared across every chat rather than per-session — toolCallIds are
@@ -467,6 +481,26 @@ function applyToolCall(
     chat: prev.lobbyChat,
   });
   return { lobbyChat: makeChat(transport), sessions, activeSessionId: sessionId };
+}
+
+/**
+ * Whether the last message already contains a completed game-creating tool
+ * call — used to decide whether an "An error occurred" on this turn is safe
+ * to auto-retry via `regenerate()`. `regenerate()` discards and redoes the
+ * entire last assistant message, so retrying after the tool call already
+ * succeeded (the error being on the model's own trailing wrap-up line
+ * instead) would throw away a correct edit and have the model redo it from
+ * scratch — see the comment where this is used.
+ */
+function lastAssistantMessageHasGameToolCall(messages: UIMessage[]): boolean {
+  const last = messages.at(-1);
+  if (!last || last.role !== "assistant") return false;
+  return last.parts.some(
+    (part) =>
+      isToolUIPart(part) &&
+      GAME_TOOL_NAMES.has(getToolName(part)) &&
+      part.state === "output-available",
+  );
 }
 
 /**
