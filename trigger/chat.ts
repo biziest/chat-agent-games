@@ -9,6 +9,10 @@ import {
   normalizeCustomGameSpec,
   normalizeNoughtsAndCrossesSpec,
 } from "../lib/game";
+import {
+  PROGRESS_MESSAGE_TYPE,
+  REQUEST_PROGRESS_MESSAGE_TYPE,
+} from "../lib/custom-game-protocol";
 import { RESUME_MARKER } from "../lib/resume-message";
 
 const SYSTEM_PROMPT = `You are the assistant in an app that builds playable games on demand.
@@ -83,11 +87,18 @@ Requirements for the HTML you write for \`createCustomGame\`:
   reported (see below) if the player is returning to a game already under way.
   When it's present, rebuild the game from it instead of starting fresh
   (position, score, level, timer — whatever a player would expect to still be
-  there). Whenever something worth resuming from changes (a move, a level
-  completed, a score change — not every animation frame), call
-  \`parent.postMessage({ type: "chat-agent-games:progress", progress: <your
-  JSON-serializable state> }, "*")\` with enough information to fully
-  reconstruct the game from \`window.__initialProgress\` next time.
+  there). Report your current state two ways, both required:
+  1. Whenever something worth resuming from changes (a move, a level
+     completed, a score change — not every animation frame), call
+     \`parent.postMessage({ type: "${PROGRESS_MESSAGE_TYPE}", progress: <your
+     JSON-serializable state> }, "*")\` with enough information to fully
+     reconstruct the game from \`window.__initialProgress\` next time.
+  2. Listen for \`message\` events where \`event.data?.type ===
+     "${REQUEST_PROGRESS_MESSAGE_TYPE}"\` and respond immediately with the
+     same kind of \`${PROGRESS_MESSAGE_TYPE}\` message — the app sends this
+     right before the player navigates away, to catch whatever changed since
+     your last checkpoint. Handle it even mid-animation; don't wait for the
+     next natural save point.
 - Correct and simple beats ambitious and broken. A small, working game is a better
   result than a bigger one with bugs.
 

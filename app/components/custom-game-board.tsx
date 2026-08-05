@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CustomGameSpec } from "@/lib/game";
+import { PROGRESS_MESSAGE_TYPE } from "@/lib/custom-game-protocol";
 
 // Fetched once and reused for every custom game shown this session — the
 // bundle (see scripts/bundle-three.mjs) is a static asset, not something that
@@ -11,8 +12,6 @@ function loadThreeSource(): Promise<string> {
   threeSourcePromise ??= fetch("/vendor/three.min.js").then((res) => res.text());
   return threeSourcePromise;
 }
-
-const PROGRESS_MESSAGE_TYPE = "chat-agent-games:progress";
 
 /** Escapes `<` so a JSON value can't break out of its enclosing <script> tag. */
 function embedJson(value: unknown): string {
@@ -53,12 +52,19 @@ export function CustomGameBoard({
   onSave,
   initialProgress,
   onProgressChange,
+  onIframeWindowChange,
 }: {
   game: CustomGameSpec;
   offerSave: boolean;
   onSave: () => void;
   initialProgress?: unknown;
   onProgressChange: (progress: unknown) => void;
+  // Reports this game's iframe window up to workspace.tsx (null once gone)
+  // so it can ask the game to flush its current state right before
+  // navigating away — see FLUSH_PROGRESS_WAIT_MS and handleExitGame there.
+  // Optional only for callers (tests, storybook-style usage) that don't
+  // need that.
+  onIframeWindowChange?: (win: Window | null) => void;
 }) {
   const [saved, setSaved] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -80,6 +86,15 @@ export function CustomGameBoard({
       cancelled = true;
     };
   }, []);
+
+  // The iframe only actually exists once `threeSource` has loaded (see the
+  // conditional render below), so this only has something to report once
+  // that's true — and needs `threeSource` as a dependency to re-run then.
+  useEffect(() => {
+    if (!onIframeWindowChange || !threeSource) return;
+    onIframeWindowChange(iframeRef.current?.contentWindow ?? null);
+    return () => onIframeWindowChange(null);
+  }, [onIframeWindowChange, threeSource]);
 
   // The sandboxed iframe has no other channel back to the app, so a custom
   // game reports its own resumable state via postMessage — see the

@@ -16,6 +16,7 @@ import {
   type CustomGameSpec,
   type GameSpec,
 } from "@/lib/game";
+import { FLUSH_PROGRESS_WAIT_MS, REQUEST_PROGRESS_MESSAGE_TYPE } from "@/lib/custom-game-protocol";
 import { buildResumeMessageText } from "@/lib/resume-message";
 import {
   getSavedGamesServerSnapshot,
@@ -157,6 +158,29 @@ export function Workspace() {
     aiStop();
   }, [transport, activeChat, aiStop]);
 
+  // The currently-mounted custom game's iframe window, if any — reported by
+  // custom-game-board.tsx, null once it's gone. Curated games (chess,
+  // noughts) never set this, so flushActiveProgress below is a no-op for
+  // them (nothing to flush; their progress is already reported as it
+  // happens — see the effect in each of their board components).
+  const activeGameWindow = useRef<Window | null>(null);
+  const handleIframeWindowChange = useCallback((win: Window | null) => {
+    activeGameWindow.current = win;
+  }, []);
+
+  // A custom game only reports progress when *it* decides something's worth
+  // resuming from (see the contract in trigger/chat.ts) — not continuously —
+  // so leaving between two such checkpoints would otherwise lose whatever
+  // happened since the last one. Asking it to report its state right now,
+  // then giving it a brief moment to answer before actually navigating away,
+  // closes that gap.
+  const flushActiveProgress = useCallback(async () => {
+    const win = activeGameWindow.current;
+    if (!win) return;
+    win.postMessage({ type: REQUEST_PROGRESS_MESSAGE_TYPE }, "*");
+    await new Promise((resolve) => setTimeout(resolve, FLUSH_PROGRESS_WAIT_MS));
+  }, []);
+
   // Starts (or, given a stable `sessionId` that's already open, resumes) a
   // dedicated chat for a game launched without going through the lobby (a
   // menu click or a saved-library pick). A fresh chat immediately sends one
@@ -196,10 +220,10 @@ export function Workspace() {
     [startSession],
   );
 
-  const handleExitGame = useCallback(
-    () => setState((prev) => ({ ...prev, activeSessionId: null })),
-    [],
-  );
+  const handleExitGame = useCallback(async () => {
+    await flushActiveProgress();
+    setState((prev) => ({ ...prev, activeSessionId: null }));
+  }, [flushActiveProgress]);
 
   // Saved custom games: kept in localStorage, not a database — this app has
   // no accounts, so "remember this on my device" is the right scope.
@@ -295,6 +319,7 @@ export function Workspace() {
           onSaveGame={handleSaveGame}
           initialProgress={activeSession?.progress}
           onProgressChange={handleProgressChange}
+          onIframeWindowChange={handleIframeWindowChange}
         />
       </main>
     </div>

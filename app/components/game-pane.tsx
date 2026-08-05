@@ -19,6 +19,7 @@ type Props = {
   onSaveGame: (spec: CustomGameSpec) => void;
   initialProgress: unknown;
   onProgressChange: (progress: unknown) => void;
+  onIframeWindowChange: (win: Window | null) => void;
 };
 
 export function GamePane({
@@ -31,6 +32,7 @@ export function GamePane({
   onSaveGame,
   initialProgress,
   onProgressChange,
+  onIframeWindowChange,
 }: Props) {
   if (!game) {
     return (
@@ -57,6 +59,7 @@ export function GamePane({
         onSaveGame={onSaveGame}
         initialProgress={initialProgress}
         onProgressChange={onProgressChange}
+        onIframeWindowChange={onIframeWindowChange}
       />
     </div>
   );
@@ -67,11 +70,13 @@ function Board({
   onSaveGame,
   initialProgress,
   onProgressChange,
+  onIframeWindowChange,
 }: {
   game: ActiveGame;
   onSaveGame: (spec: CustomGameSpec) => void;
   initialProgress: unknown;
   onProgressChange: (progress: unknown) => void;
+  onIframeWindowChange: (win: Window | null) => void;
 }) {
   const { spec, origin } = game;
   switch (spec.kind) {
@@ -102,6 +107,7 @@ function Board({
           onSave={() => onSaveGame(spec)}
           initialProgress={initialProgress}
           onProgressChange={onProgressChange}
+          onIframeWindowChange={onIframeWindowChange}
         />
       );
   }
