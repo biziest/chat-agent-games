@@ -89,6 +89,23 @@ function makeChat(transport: Transport): Chat<UIMessage> {
 }
 
 /**
+ * Applies a patch (a new spec from an edit, new progress from playing) to a
+ * saved game's own localStorage entry, if `sessionId` happens to belong to
+ * one — a no-op for any other session (a catalog pick, or a custom game
+ * never saved). Session state already tracks the live truth for whatever's
+ * currently open; this is what makes that truth durable across a reload
+ * *and* across revisiting a saved game once its in-memory session is gone.
+ */
+function mirrorSavedGamePatch(
+  sessionId: string,
+  patch: Partial<Pick<SavedGame, "spec" | "progress">>,
+): void {
+  const current = getSavedGamesSnapshot();
+  if (!current.some((saved) => saved.id === sessionId)) return;
+  writeSavedGames(current.map((saved) => (saved.id === sessionId ? { ...saved, ...patch } : saved)));
+}
+
+/**
  * Owns every chat in the app: one always-available "lobby" conversation for
  * describing a brand-new game, and one dedicated conversation per game
  * that's been created or launched, so a follow-up like "make it harder"
@@ -199,7 +216,18 @@ export function Workspace() {
     if (!found || found.toolCallId === appliedToolCallId.current) return;
     appliedToolCallId.current = found.toolCallId;
     setState((prev) => applyToolCall(prev, found, transport));
-  }, [messages, transport]);
+
+    // An edit to an existing session's game (not a brand-new one the lobby
+    // chat just produced) needs mirroring into its saved-library entry too,
+    // same as progress — otherwise a saved game's *code* only ever updates
+    // in memory: reopening it later (once its in-memory session is gone —
+    // after a reload, if it wasn't the one game restored as active) would
+    // silently rebuild it from the stale, original saved version, undoing
+    // every edit made since.
+    if (activeSessionId && found.spec.kind === "custom") {
+      mirrorSavedGamePatch(activeSessionId, { spec: found.spec });
+    }
+  }, [messages, transport, activeSessionId]);
 
   // `useChat`'s own stop() doesn't reach the backend once a stream has been
   // reconnected, so signal the run directly and then settle the local state.
@@ -331,12 +359,7 @@ export function Workspace() {
         return { ...prev, sessions };
       });
 
-      if (!activeSessionId) return;
-      const current = getSavedGamesSnapshot();
-      if (!current.some((saved) => saved.id === activeSessionId)) return;
-      writeSavedGames(
-        current.map((saved) => (saved.id === activeSessionId ? { ...saved, progress } : saved)),
-      );
+      if (activeSessionId) mirrorSavedGamePatch(activeSessionId, { progress });
     },
     [activeSessionId],
   );
