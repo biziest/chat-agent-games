@@ -181,13 +181,17 @@ export function Workspace() {
   );
 
   // Launching a default game needs no intelligence, so this skips the model
-  // entirely — see app/components/game-menu.tsx.
+  // entirely — see app/components/game-menu.tsx. Keyed by a stable
+  // per-catalog-entry id (not a fresh random one) so clicking "Chess" again
+  // after leaving for the menu resumes that same ongoing game, chat, and
+  // progress — the same reuse `startSession` already does for saved games —
+  // rather than resetting to a brand-new one every time.
   const handleSelectGame = useCallback(
     (id: CatalogGameId) => {
       const spec = defaultGameSpec(id);
       const toolName = id === "chess" ? "createChess" : "createNoughtsAndCrosses";
       const label = GAME_CATALOG.find((entry) => entry.id === id)?.title ?? spec.title;
-      startSession(spec, toolName, label);
+      startSession(spec, toolName, label, `catalog-${id}`);
     },
     [startSession],
   );
