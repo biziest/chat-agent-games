@@ -26,9 +26,7 @@ export type PersistedSession = z.infer<typeof persistedSessionSchema>;
 
 const STORAGE_KEY = "chat-agent-games:active-session";
 
-/** Reads and validates the persisted session — invalid or absent means null. */
-export function loadActiveSession(): PersistedSession | null {
-  if (typeof window === "undefined") return null;
+function readFromStorage(): PersistedSession | null {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
@@ -38,6 +36,41 @@ export function loadActiveSession(): PersistedSession | null {
   } catch {
     return null;
   }
+}
+
+// Read once and cached, not re-parsed on every call — `useSyncExternalStore`
+// (see workspace.tsx) compares this by reference across renders, and a
+// fresh object every call would look like a perpetual change. We only ever
+// care about the value as of page load anyway: once workspace.tsx has
+// applied it to its own session state, that becomes the source of truth,
+// not this cache.
+let cache: PersistedSession | null | undefined;
+
+/**
+ * The `getSnapshot` half of a `useSyncExternalStore` triple in workspace.tsx
+ * — deliberately not a plain function called during a `useState` initializer
+ * or `useEffect`. `useState` runs during the server-rendered pass too (which
+ * has no localStorage and would always be empty), and a `useEffect` reading
+ * this and calling `setState` is exactly what `eslint-plugin-react-hooks`'s
+ * `set-state-in-effect` rule flags for what's really a one-time,
+ * render-time state adjustment. `useSyncExternalStore` is the one primitive
+ * built to hand back a value that legitimately differs between server and
+ * client without either problem.
+ */
+export function getActiveSessionSnapshot(): PersistedSession | null {
+  cache ??= readFromStorage();
+  return cache;
+}
+
+export function getActiveSessionServerSnapshot(): PersistedSession | null {
+  return null;
+}
+
+// No live updates needed — nothing outside this tab's own writes changes
+// this, and workspace.tsx already tracks the live truth in its own session
+// state once restored, so an unused (never-firing) subscribe is correct.
+export function subscribeActiveSession(): () => void {
+  return () => {};
 }
 
 /** Pass `null` to clear it (e.g. the player left for the menu). */

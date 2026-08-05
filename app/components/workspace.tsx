@@ -16,7 +16,13 @@ import {
   type CustomGameSpec,
   type GameSpec,
 } from "@/lib/game";
-import { loadActiveSession, saveActiveSession } from "@/lib/active-session-storage";
+import {
+  getActiveSessionServerSnapshot,
+  getActiveSessionSnapshot,
+  saveActiveSession,
+  subscribeActiveSession,
+  type PersistedSession,
+} from "@/lib/active-session-storage";
 import { FLUSH_PROGRESS_WAIT_MS, REQUEST_PROGRESS_MESSAGE_TYPE } from "@/lib/custom-game-protocol";
 import { buildResumeMessageText } from "@/lib/resume-message";
 import {
@@ -97,33 +103,42 @@ export function Workspace() {
     startSession: ({ chatId, clientData }) => startChatSession({ chatId, clientData }),
   });
 
-  // Restores whatever game was on screen when the page was last reloaded —
-  // see lib/active-session-storage.ts. Reusing its chat id (rather than a
-  // fresh one) is what lets the model still act on edit requests afterward:
-  // chat.agent keeps that conversation's history durably server-side keyed
-  // by id, independent of this fresh, empty client-side `Chat` object.
-  const [state, setState] = useState<WorkspaceState>(() => {
-    const persisted = loadActiveSession();
-    const sessions = new Map<string, GameSession>();
-    if (persisted) {
-      sessions.set(persisted.id, {
-        id: persisted.id,
-        spec: persisted.spec,
-        origin: persisted.origin,
-        chat: new Chat<UIMessage>({ id: persisted.id, transport, messages: [] }),
-        progress: persisted.progress,
-      });
-    }
-    return {
-      lobbyChat: makeChat(transport),
-      sessions,
-      activeSessionId: persisted?.id ?? null,
-    };
-  });
+  const [state, setState] = useState<WorkspaceState>(() => ({
+    lobbyChat: makeChat(transport),
+    sessions: new Map(),
+    activeSessionId: null,
+  }));
   const { lobbyChat, sessions, activeSessionId } = state;
 
   const activeSession = activeSessionId ? (sessions.get(activeSessionId) ?? null) : null;
   const activeChat = activeSession?.chat ?? lobbyChat;
+
+  // Restores whatever game was on screen when the page was last reloaded —
+  // see lib/active-session-storage.ts. `useSyncExternalStore` (not a
+  // `useState` initializer, not a `useEffect`) is what makes this safe:
+  // reading localStorage in the `useState` initializer above ran during the
+  // server-rendered pass too (which necessarily has no localStorage and
+  // always renders the menu), making the client's first render disagree
+  // with the server's — a hydration mismatch, which made React discard and
+  // rebuild the whole tree client-side, taking an in-flight resume message
+  // down with it. Reading it in a `useEffect` instead avoids the mismatch
+  // but calling `setState` there is exactly what `eslint-plugin-react-hooks`'s
+  // `set-state-in-effect` rule flags for what's really a one-time,
+  // render-time adjustment. `getActiveSessionServerSnapshot` returning
+  // `null` keeps the hydration pass itself matching the server, and the
+  // `setState`-during-render pattern below (React's own documented "adjust
+  // state when a prop changes" pattern) applies the restore the moment the
+  // real client value is available afterward, without an effect at all.
+  const restoredSession = useSyncExternalStore(
+    subscribeActiveSession,
+    getActiveSessionSnapshot,
+    getActiveSessionServerSnapshot,
+  );
+  const [hasAppliedRestore, setHasAppliedRestore] = useState(false);
+  if (!hasAppliedRestore && restoredSession) {
+    setHasAppliedRestore(true);
+    setState((prev) => restoreActiveSession(prev, restoredSession, transport));
+  }
 
   // Keeps the persisted "what was I looking at" pointer in sync — cleared
   // when there's no active game (the menu itself isn't restored, only a
@@ -375,6 +390,29 @@ export function Workspace() {
       </main>
     </div>
   );
+}
+
+/**
+ * Reconstructs the one game that was on screen when the page was last
+ * reloaded — see the effect that calls this in `Workspace`. A no-op if it's
+ * already present (shouldn't happen this early, but keeps this a safe,
+ * idempotent replay rather than clobbering a session already in progress).
+ */
+function restoreActiveSession(
+  prev: WorkspaceState,
+  persisted: PersistedSession,
+  transport: Transport,
+): WorkspaceState {
+  if (prev.sessions.has(persisted.id)) return prev;
+  const sessions = new Map(prev.sessions);
+  sessions.set(persisted.id, {
+    id: persisted.id,
+    spec: persisted.spec,
+    origin: persisted.origin,
+    chat: new Chat<UIMessage>({ id: persisted.id, transport, messages: [] }),
+    progress: persisted.progress,
+  });
+  return { ...prev, sessions, activeSessionId: persisted.id };
 }
 
 /**
