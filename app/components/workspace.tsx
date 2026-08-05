@@ -16,6 +16,7 @@ import {
   type CustomGameSpec,
   type GameSpec,
 } from "@/lib/game";
+import { loadActiveSession, saveActiveSession } from "@/lib/active-session-storage";
 import { FLUSH_PROGRESS_WAIT_MS, REQUEST_PROGRESS_MESSAGE_TYPE } from "@/lib/custom-game-protocol";
 import { buildResumeMessageText } from "@/lib/resume-message";
 import {
@@ -96,15 +97,49 @@ export function Workspace() {
     startSession: ({ chatId, clientData }) => startChatSession({ chatId, clientData }),
   });
 
-  const [state, setState] = useState<WorkspaceState>(() => ({
-    lobbyChat: makeChat(transport),
-    sessions: new Map(),
-    activeSessionId: null,
-  }));
+  // Restores whatever game was on screen when the page was last reloaded —
+  // see lib/active-session-storage.ts. Reusing its chat id (rather than a
+  // fresh one) is what lets the model still act on edit requests afterward:
+  // chat.agent keeps that conversation's history durably server-side keyed
+  // by id, independent of this fresh, empty client-side `Chat` object.
+  const [state, setState] = useState<WorkspaceState>(() => {
+    const persisted = loadActiveSession();
+    const sessions = new Map<string, GameSession>();
+    if (persisted) {
+      sessions.set(persisted.id, {
+        id: persisted.id,
+        spec: persisted.spec,
+        origin: persisted.origin,
+        chat: new Chat<UIMessage>({ id: persisted.id, transport, messages: [] }),
+        progress: persisted.progress,
+      });
+    }
+    return {
+      lobbyChat: makeChat(transport),
+      sessions,
+      activeSessionId: persisted?.id ?? null,
+    };
+  });
   const { lobbyChat, sessions, activeSessionId } = state;
 
   const activeSession = activeSessionId ? (sessions.get(activeSessionId) ?? null) : null;
   const activeChat = activeSession?.chat ?? lobbyChat;
+
+  // Keeps the persisted "what was I looking at" pointer in sync — cleared
+  // when there's no active game (the menu itself isn't restored, only a
+  // game in progress), overwritten with the latest spec/progress otherwise.
+  useEffect(() => {
+    saveActiveSession(
+      activeSession
+        ? {
+            id: activeSession.id,
+            spec: activeSession.spec,
+            origin: activeSession.origin,
+            progress: activeSession.progress,
+          }
+        : null,
+    );
+  }, [activeSession]);
 
   const {
     messages,
@@ -187,8 +222,18 @@ export function Workspace() {
   // real message asking the model to reproduce the existing spec via a real
   // tool call — see `buildResumeMessageText` — rather than faking prior
   // history client-side, which the backend would never actually see.
+  // `initialProgress` seeds the new session from whatever was last saved
+  // for it (a saved game's own stored progress — see `handleLaunchSavedGame`
+  // — or the just-reloaded active session's, above); without this, a saved
+  // game's persisted progress was written but never actually read back in.
   const startSession = useCallback(
-    (spec: GameSpec, toolName: string, label: string, sessionId = crypto.randomUUID()) => {
+    (
+      spec: GameSpec,
+      toolName: string,
+      label: string,
+      sessionId = crypto.randomUUID(),
+      initialProgress?: unknown,
+    ) => {
       if (sessions.has(sessionId)) {
         setState((prev) => ({ ...prev, activeSessionId: sessionId }));
         return;
@@ -197,7 +242,13 @@ export function Workspace() {
       void chat.sendMessage({ text: buildResumeMessageText(toolName, label, spec) });
       setState((prev) => {
         const nextSessions = new Map(prev.sessions);
-        nextSessions.set(sessionId, { id: sessionId, spec, origin: "menu", chat });
+        nextSessions.set(sessionId, {
+          id: sessionId,
+          spec,
+          origin: "menu",
+          chat,
+          progress: initialProgress,
+        });
         return { ...prev, sessions: nextSessions, activeSessionId: sessionId };
       });
     },
@@ -281,7 +332,7 @@ export function Workspace() {
   // starting over blank each time.
   const handleLaunchSavedGame = useCallback(
     (saved: SavedGame) => {
-      startSession(saved.spec, "createCustomGame", saved.spec.title, saved.id);
+      startSession(saved.spec, "createCustomGame", saved.spec.title, saved.id, saved.progress);
     },
     [startSession],
   );
