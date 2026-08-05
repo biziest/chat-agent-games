@@ -20,6 +20,7 @@ type Props = {
   viewingPublishedGame: PublishedGame | null;
   onSelectGame: (id: CatalogGameId) => void;
   onSelectPublished: (game: PublishedGame) => void;
+  onGameUnpublished: () => void;
   onExitGame: () => void;
   savedGames: SavedGame[];
   onLaunchSavedGame: (saved: SavedGame) => void;
@@ -35,6 +36,7 @@ export function GamePane({
   viewingPublishedGame,
   onSelectGame,
   onSelectPublished,
+  onGameUnpublished,
   onExitGame,
   savedGames,
   onLaunchSavedGame,
@@ -48,7 +50,7 @@ export function GamePane({
     return (
       <div className="relative flex min-h-0 flex-1 flex-col">
         <ExitButton onClick={onExitGame} />
-        <PublishedGameBoard game={viewingPublishedGame} />
+        <PublishedGameBoard game={viewingPublishedGame} onUnpublished={onGameUnpublished} />
       </div>
     );
   }

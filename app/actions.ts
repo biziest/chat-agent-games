@@ -2,7 +2,13 @@
 
 import { auth } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
-import { getPublishedGameFromDb, insertPublishedGame, listPublishedGamesFromDb } from "@/lib/db";
+import { z } from "zod";
+import {
+  deletePublishedGameFromDb,
+  getPublishedGameFromDb,
+  insertPublishedGame,
+  listPublishedGamesFromDb,
+} from "@/lib/db";
 import { publishGameInputSchema, type PublishedGame } from "@/lib/published-games";
 
 /**
@@ -50,4 +56,17 @@ export async function listPublishedGames(): Promise<PublishedGame[]> {
 
 export async function getPublishedGame(id: string): Promise<PublishedGame | null> {
   return getPublishedGameFromDb(id);
+}
+
+/**
+ * Removes a game from the shared gallery. No accounts exist, so there's no
+ * server-side way to verify the caller is actually who published it — the
+ * client only offers the "Unpublish" button to whoever's browser has this
+ * id in its own local "published by me" list (see
+ * lib/published-game-tracking.ts), the same soft-courtesy trust level as
+ * the rest of this app.
+ */
+export async function unpublishGame(id: unknown): Promise<void> {
+  const parsed = z.string().uuid().parse(id);
+  await deletePublishedGameFromDb(parsed);
 }

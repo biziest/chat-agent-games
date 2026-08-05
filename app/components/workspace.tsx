@@ -349,6 +349,11 @@ export function Workspace() {
     [flushActiveProgress],
   );
 
+  // The game itself is gone once unpublished — nothing left to show.
+  const handleGameUnpublished = useCallback(() => {
+    setViewingPublishedGame(null);
+  }, []);
+
   // Saved custom games: kept in localStorage, not a database — this app has
   // no accounts, so "remember this on my device" is the right scope.
   // useSyncExternalStore (not a useEffect + setState) so the server-rendered
@@ -446,6 +451,7 @@ export function Workspace() {
           viewingPublishedGame={viewingPublishedGame}
           onSelectGame={handleSelectGame}
           onSelectPublished={(published) => void handleSelectPublished(published)}
+          onGameUnpublished={handleGameUnpublished}
           onExitGame={handleExitGame}
           savedGames={savedGames}
           onLaunchSavedGame={handleLaunchSavedGame}

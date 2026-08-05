@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { publishGame } from "@/app/actions";
+import { publishGame, unpublishGame } from "@/app/actions";
+import { TypeToConfirmModal } from "@/app/components/type-to-confirm-modal";
 import type { CustomGameSpec } from "@/lib/game";
 import { PROGRESS_MESSAGE_TYPE } from "@/lib/custom-game-protocol";
+import { markPublishedByMe, unmarkPublishedByMe } from "@/lib/published-game-tracking";
 import { buildGameSrcDoc, loadThreeSource } from "@/lib/three-runtime";
 
 // Remembered across publishes on this browser so returning players don't
@@ -40,9 +42,11 @@ export function CustomGameBoard({
   const [saved, setSaved] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [showPublishPrompt, setShowPublishPrompt] = useState(false);
+  const [showUnpublishPrompt, setShowUnpublishPrompt] = useState(false);
   const [publishState, setPublishState] = useState<"idle" | "publishing" | "published" | "error">(
     "idle",
   );
+  const [publishedId, setPublishedId] = useState<string | null>(null);
   const [threeSource, setThreeSource] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -107,12 +111,28 @@ export function CustomGameBoard({
     setShowPublishPrompt(false);
     setPublishState("publishing");
     try {
-      await publishGame({ title: game.title, genre: game.genre, html: game.html, authorName });
+      const published = await publishGame({
+        title: game.title,
+        genre: game.genre,
+        html: game.html,
+        authorName,
+      });
       window.localStorage.setItem(AUTHOR_NAME_KEY, authorName);
+      markPublishedByMe(published.id);
+      setPublishedId(published.id);
       setPublishState("published");
     } catch {
       setPublishState("error");
     }
+  };
+
+  const handleUnpublish = async () => {
+    if (!publishedId) return;
+    setShowUnpublishPrompt(false);
+    await unpublishGame(publishedId);
+    unmarkPublishedByMe(publishedId);
+    setPublishedId(null);
+    setPublishState("idle");
   };
 
   // A rough but reliable signal: the only way this HTML could restore state
@@ -168,7 +188,16 @@ export function CustomGameBoard({
 
       <div className="flex items-center justify-center gap-3 text-sm">
         {publishState === "published" ? (
-          <span className="text-accent">Published — everyone can play it ✓</span>
+          <>
+            <span className="text-accent">Published — everyone can play it ✓</span>
+            <button
+              type="button"
+              onClick={() => setShowUnpublishPrompt(true)}
+              className="text-xs text-muted underline decoration-red-400/40 underline-offset-2 hover:text-red-300 hover:decoration-red-300"
+            >
+              Unpublish
+            </button>
+          </>
         ) : (
           <button
             type="button"
@@ -202,6 +231,16 @@ export function CustomGameBoard({
         <PublishPrompt
           onCancel={() => setShowPublishPrompt(false)}
           onConfirm={(name) => void handlePublish(name)}
+        />
+      ) : null}
+
+      {showUnpublishPrompt ? (
+        <TypeToConfirmModal
+          title={`Unpublish "${game.title}"?`}
+          description="It'll be removed from the community gallery for everyone. This can't be undone. Type yes to confirm."
+          confirmLabel="Unpublish"
+          onCancel={() => setShowUnpublishPrompt(false)}
+          onConfirm={() => void handleUnpublish()}
         />
       ) : null}
     </div>

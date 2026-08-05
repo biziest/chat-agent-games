@@ -61,3 +61,7 @@ export async function getPublishedGameFromDb(id: string): Promise<PublishedGame 
   `;
   return result.rows[0] ? toPublishedGame(result.rows[0]) : null;
 }
+
+export async function deletePublishedGameFromDb(id: string): Promise<void> {
+  await sql`DELETE FROM published_games WHERE id = ${id};`;
+}
