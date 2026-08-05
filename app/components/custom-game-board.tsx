@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { publishGame } from "@/app/actions";
 import type { CustomGameSpec } from "@/lib/game";
 import { PROGRESS_MESSAGE_TYPE } from "@/lib/custom-game-protocol";
 import { buildGameSrcDoc, loadThreeSource } from "@/lib/three-runtime";
+
+// Remembered across publishes on this browser so returning players don't
+// have to retype it every time — not an account, just a convenience.
+const AUTHOR_NAME_KEY = "chat-agent-games:author-name";
 
 /**
  * Renders an arbitrary, agent-authored game. Unlike the curated games, there's
@@ -35,6 +39,7 @@ export function CustomGameBoard({
 }) {
   const [saved, setSaved] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [showPublishPrompt, setShowPublishPrompt] = useState(false);
   const [publishState, setPublishState] = useState<"idle" | "publishing" | "published" | "error">(
     "idle",
   );
@@ -98,10 +103,12 @@ export function CustomGameBoard({
   // game-pane.tsx/workspace.tsx — publishing is a network call with its own
   // loading/error states this component already needs to own, and Next.js
   // server actions are safe to call straight from a client component.
-  const handlePublish = async () => {
+  const handlePublish = async (authorName: string) => {
+    setShowPublishPrompt(false);
     setPublishState("publishing");
     try {
-      await publishGame({ title: game.title, genre: game.genre, html: game.html });
+      await publishGame({ title: game.title, genre: game.genre, html: game.html, authorName });
+      window.localStorage.setItem(AUTHOR_NAME_KEY, authorName);
       setPublishState("published");
     } catch {
       setPublishState("error");
@@ -165,7 +172,7 @@ export function CustomGameBoard({
         ) : (
           <button
             type="button"
-            onClick={() => void handlePublish()}
+            onClick={() => setShowPublishPrompt(true)}
             disabled={publishState === "publishing"}
             className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -190,6 +197,88 @@ export function CustomGameBoard({
           Loading graphics engine…
         </div>
       )}
+
+      {showPublishPrompt ? (
+        <PublishPrompt
+          onCancel={() => setShowPublishPrompt(false)}
+          onConfirm={(name) => void handlePublish(name)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Asks for a display name before publishing — the game's publish date is
+ * always just "now" (stamped server-side, see lib/db.ts), not something the
+ * player picks.
+ */
+function PublishPrompt({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: (authorName: string) => void;
+}) {
+  const [name, setName] = useState(
+    () => (typeof window !== "undefined" && window.localStorage.getItem(AUTHOR_NAME_KEY)) || "",
+  );
+  const inputId = useId();
+  const trimmed = name.trim();
+
+  const confirm = () => {
+    if (trimmed) onConfirm(trimmed);
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={`${inputId}-title`}
+      className="fixed inset-0 z-20 flex items-center justify-center bg-black/60 p-4"
+      onClick={onCancel}
+    >
+      <div
+        onClick={(event) => event.stopPropagation()}
+        className="w-full max-w-sm rounded-xl border border-border bg-surface p-5"
+      >
+        <h3 id={`${inputId}-title`} className="text-sm font-medium text-foreground">
+          Publish this game?
+        </h3>
+        <p className="mt-2 text-xs leading-relaxed text-muted">
+          Everyone will be able to find and play it. What name should show as the creator?
+        </p>
+        <input
+          id={inputId}
+          autoFocus
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") confirm();
+            if (event.key === "Escape") onCancel();
+          }}
+          placeholder="Your name"
+          maxLength={60}
+          className="mt-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent/40"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={confirm}
+            disabled={!trimmed}
+            className="rounded-lg bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            Publish
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

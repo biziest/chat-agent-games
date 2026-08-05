@@ -30,6 +30,10 @@ export function PublishedGameBoard({ game }: { game: PublishedGame }) {
     <div className="flex flex-1 flex-col gap-3 p-6">
       <header className="text-center">
         <h2 className="text-lg font-medium tracking-tight">{game.title}</h2>
+        <p className="mt-1 text-xs text-muted">
+          {game.authorName ? `by ${game.authorName}` : "Anonymous"} ·{" "}
+          {new Date(game.publishedAt).toLocaleDateString()}
+        </p>
       </header>
 
       {threeSource ? (

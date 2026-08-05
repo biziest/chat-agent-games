@@ -19,8 +19,13 @@ await sql`
     title TEXT NOT NULL,
     genre TEXT NOT NULL,
     html TEXT NOT NULL,
+    author_name TEXT,
     published_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
 `;
+
+// Re-running this after the table already existed (from before author_name
+// was added) — ALTER .. ADD COLUMN IF NOT EXISTS makes that safe too.
+await sql`ALTER TABLE published_games ADD COLUMN IF NOT EXISTS author_name TEXT;`;
 
 console.log("Database ready: published_games");

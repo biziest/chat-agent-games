@@ -170,6 +170,10 @@ function CommunityList({ onSelect }: { onSelect: (game: PublishedGame) => void }
             <p className="text-sm font-medium text-foreground">{game.title}</p>
             <span className="text-[11px] text-muted">{game.genre}</span>
           </div>
+          <p className="mt-1 text-xs text-muted">
+            {game.authorName ? `by ${game.authorName}` : "Anonymous"} ·{" "}
+            {new Date(game.publishedAt).toLocaleDateString()}
+          </p>
         </button>
       ))}
     </div>

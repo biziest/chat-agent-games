@@ -15,6 +15,7 @@ type PublishedGameRow = {
   title: string;
   genre: string;
   html: string;
+  author_name: string | null;
   published_at: number;
 };
 
@@ -24,6 +25,7 @@ function toPublishedGame(row: PublishedGameRow): PublishedGame {
     title: row.title,
     genre: row.genre as Genre,
     html: row.html,
+    authorName: row.author_name,
     publishedAt: Number(row.published_at),
   };
 }
@@ -32,10 +34,11 @@ export async function insertPublishedGame(input: {
   title: string;
   genre: Genre;
   html: string;
+  authorName: string;
 }): Promise<string> {
   const result = await sql<{ id: string }>`
-    INSERT INTO published_games (title, genre, html)
-    VALUES (${input.title}, ${input.genre}, ${input.html})
+    INSERT INTO published_games (title, genre, html, author_name)
+    VALUES (${input.title}, ${input.genre}, ${input.html}, ${input.authorName})
     RETURNING id;
   `;
   return result.rows[0].id;
@@ -43,7 +46,7 @@ export async function insertPublishedGame(input: {
 
 export async function listPublishedGamesFromDb(): Promise<PublishedGame[]> {
   const result = await sql<PublishedGameRow>`
-    SELECT id, title, genre, html, extract(epoch from published_at) * 1000 as published_at
+    SELECT id, title, genre, html, author_name, extract(epoch from published_at) * 1000 as published_at
     FROM published_games
     ORDER BY published_at DESC;
   `;
@@ -52,7 +55,7 @@ export async function listPublishedGamesFromDb(): Promise<PublishedGame[]> {
 
 export async function getPublishedGameFromDb(id: string): Promise<PublishedGame | null> {
   const result = await sql<PublishedGameRow>`
-    SELECT id, title, genre, html, extract(epoch from published_at) * 1000 as published_at
+    SELECT id, title, genre, html, author_name, extract(epoch from published_at) * 1000 as published_at
     FROM published_games
     WHERE id = ${id};
   `;

@@ -14,6 +14,7 @@ export type PublishedGame = {
   title: string;
   genre: Genre;
   html: string;
+  authorName: string | null;
   publishedAt: number;
 };
 
@@ -21,5 +22,8 @@ export const publishGameInputSchema = z.object({
   title: z.string().trim().min(1).max(200),
   genre: z.enum(GENRES),
   html: z.string().min(1),
+  // No accounts anywhere in this app, so this is just whatever the
+  // publisher typed at the time — not verified, not unique, not a login.
+  authorName: z.string().trim().min(1).max(60),
 });
 export type PublishGameInput = z.infer<typeof publishGameInputSchema>;
